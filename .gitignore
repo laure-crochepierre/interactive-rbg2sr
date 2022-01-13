@@ -1,0 +1,8 @@
+.idea/
+**/__pycache__/
+**/.ipynb_checkpoints/
+**/runs/
+**/nohup.out
+**/proxy_*.sh
+results
+
