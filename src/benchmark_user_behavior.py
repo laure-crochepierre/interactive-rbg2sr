@@ -13,6 +13,7 @@ import torch
 torch.autograd.set_detect_anomaly(True)
 torch.set_num_threads(1)
 
+import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from multiprocessing import Pool
@@ -23,7 +24,8 @@ from policies import Policy
 from user_behavior import SelectRewardWithProbUser, SelectRandomRewardUser, SelectBestRewardUser
 
 
-def launch_training(i, user_type, writer_logdir="../results/user_benchmark/random"):
+def launch_training(params):
+    i, user_type, writer_logdir = params
     print(i, writer_logdir)
     # model definition
     params = json.load(open("params.json", 'rb'))
@@ -56,7 +58,7 @@ def launch_training(i, user_type, writer_logdir="../results/user_benchmark/rando
     metrics = [mean_squared_error, mean_absolute_error, r2_score, nrmse]
 
     f = eval(f'lambda x : {model.logger["best_expression"]}')
-    y_pred = f(model.env.X_test)
+    y_pred = f(model.env.X_test.values)
 
     scores = []
     for m in metrics:
@@ -69,7 +71,7 @@ def launch_training(i, user_type, writer_logdir="../results/user_benchmark/rando
 
 
 if __name__ == "__main__":
-    nb_tests = 10
+    nb_tests = 30
     scores = []
 
     combinaitions = []
@@ -79,9 +81,10 @@ if __name__ == "__main__":
                      SelectRandomRewardUser(), SelectBestRewardUser()]:
             combinaitions.append([i, user, f"../results/user_benchmark/{user.type}"])
 
-    with Pool(30) as p:
+
+    with Pool(6) as p:
             scores = p.map(launch_training, combinaitions)
 
     pd.DataFrame(data=scores,
-                 columns=['function_name', "mse", "mae", "r2", "nrmse", "result", 'time']).to_csv(
-        f"../results/user_benchmark{time.time()}")
+                 columns=["mse", "mae", "r2", "nrmse", "result", 'time']).to_csv(
+        f"../results/user_benchmark_{time.time()}.csv")
