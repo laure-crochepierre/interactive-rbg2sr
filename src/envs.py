@@ -438,13 +438,13 @@ class BatchSymbolicRegressionEnv(gym.Env):
         new_brothers = np.zeros((nb_suggestions, self.grammar.max_brother_symbols, self.n_actions + 1))
 
         for i, action_id in enumerate(action_ids):
-            if self.done[i]:
+            if suggestions_infos['done'][i]:
                 new_symbols[i] = self.grammar.symbol_encoding["#"]
                 new_masks[i] = self.grammar.symbols_to_mask[self.start_symbol]
                 new_parents[i] = self.grammar.action_encoding["#"]
                 new_brothers[i] = np.array([[self.grammar.action_encoding['#'][0]] * self.grammar.max_brother_symbols])
                 continue
-            action = self.grammar.productions_list[action_id]
+            action = self.grammar.productions_list[int(action_id)]
             suggestions_infos['translations'][i] = re.sub("<.+?>", action['raw'], suggestions_infos['translations'][i], 1)
 
             # Store action in list

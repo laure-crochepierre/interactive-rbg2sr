@@ -19,12 +19,15 @@ from abc import ABC
 
 
 class User(ABC):
-    def __init__(self):
+    def __init__(self, reuse=False, interaction_frequency=1):
 
         self.default_answer = {"pairs": {"ids": [], "answers": []},
                                "classes": {"top": [], "middle": [], 'low': []},
                                "suggest": []}
         self.description = "Default User"
+        self.preferences = None
+        self.reuse = reuse
+        self.interaction_frequency = interaction_frequency
 
     @staticmethod
     def select_preference(self, gui_infos, i_epoch):
@@ -32,67 +35,76 @@ class User(ABC):
 
 
 class RealUser(User):
-    def __init__(self, gui_data_path):
+    def __init__(self, gui_data_path, **kwargs):
+        super(RealUser, self).__init__(**kwargs)
         self.gui_data_path = gui_data_path
         self.description = "Real user. Preferences are queried with an interactive interface"
         self.type = "real"
 
     def select_preference(self, gui_infos, i_epoch):
-        pickle.dump(gui_infos, open(os.path.join(self.gui_data_path, f"{i_epoch}.pkl"), 'wb'))
+        if i_epoch % self.interaction_frequency == 0:
+            pickle.dump(gui_infos, open(os.path.join(self.gui_data_path, f"{i_epoch}.pkl"), 'wb'))
 
-        while not os.path.exists(os.path.join(self.gui_data_path, f"{i_epoch}_answers.pkl")):
-            time.sleep(2)
+            while not os.path.exists(os.path.join(self.gui_data_path, f"{i_epoch}_answers.pkl")):
+                time.sleep(2)
 
-        gui_answers = pickle.load(open(os.path.join(self.gui_data_path, f"{i_epoch}_answers.pkl"), 'rb'))
-        return gui_answers
+            gui_answers = pickle.load(open(os.path.join(self.gui_data_path, f"{i_epoch}_answers.pkl"), 'rb'))
+            self.preferences = gui_answers
+        return self.preferences
 
 
 class SelectBestRewardUser(User):
-    def __init__(self):
-        super(SelectBestRewardUser, self).__init__()
+    def __init__(self, **kwargs):
+        super(SelectBestRewardUser, self).__init__(**kwargs)
         self.description = "User who always select the solution with the highest reward"
         self.type = "best"
 
     def select_preference(self, gui_infos, i_epoch):
-        simulated_answers = copy.deepcopy(self.default_answer)
-        simulated_answers['pairs']['ids'] = gui_infos['combinaisons']
+        if i_epoch % self.interaction_frequency == 0:
+            simulated_answers = copy.deepcopy(self.default_answer)
+            simulated_answers['pairs']['ids'] = gui_infos['combinaisons']
 
-        rewards = gui_infos['rewards']
-        answers = np.array([{True: 'r', False: 'l'}[rewards[i1] < rewards[i2]] for i1, i2 in gui_infos['combinaisons']])
-        simulated_answers['pairs']['answers'] = answers
-        return simulated_answers
+            rewards = gui_infos['rewards']
+            answers = np.array([{True: 'r', False: 'l'}[rewards[i1] < rewards[i2]] for i1, i2 in gui_infos['combinaisons']])
+            simulated_answers['pairs']['answers'] = answers
+            self.preferences = simulated_answers
+        return self.preferences
 
 
 class SelectRandomRewardUser(User):
-    def __init__(self):
-        super(SelectRandomRewardUser, self).__init__()
+    def __init__(self, **kwargs):
+        super(SelectRandomRewardUser, self).__init__(**kwargs)
         self.description = "User who always select a random solution"
         self.type = "random"
 
     def select_preference(self, gui_infos, i_epoch):
-        simulated_answers = copy.deepcopy(self.default_answer)
-        simulated_answers['pairs']['ids'] = gui_infos['combinaisons']
+        if i_epoch % self.interaction_frequency == 0:
+            simulated_answers = copy.deepcopy(self.default_answer)
+            simulated_answers['pairs']['ids'] = gui_infos['combinaisons']
 
-        rewards = gui_infos['rewards']
-        answers = np.array([{True: 'r', False: 'l'}[random.uniform(0, 1) > 0.5] for i1, i2 in gui_infos['combinaisons']])
-        simulated_answers['pairs']['answers'] = answers
-        return simulated_answers
+            rewards = gui_infos['rewards']
+            answers = np.array([{True: 'r', False: 'l'}[random.uniform(0, 1) > 0.5] for i1, i2 in gui_infos['combinaisons']])
+            simulated_answers['pairs']['answers'] = answers
+            self.preferences = simulated_answers
+        return self.preferences
 
 
 class SelectRewardWithProbUser(User):
-    def __init__(self, prob=0.6):
-        super(SelectRewardWithProbUser, self).__init__()
+    def __init__(self, prob=0.6, **kwargs):
+        super(SelectRewardWithProbUser, self).__init__(**kwargs)
         self.description = "User who always select a random solution"
         self.prob = prob
         self.type = f"random_prob_{prob}"
 
     def select_preference(self, gui_infos, i_epoch):
-        simulated_answers = copy.deepcopy(self.default_answer)
-        simulated_answers['pairs']['ids'] = gui_infos['combinaisons']
+        if i_epoch % self.interaction_frequency == 0:
+            simulated_answers = copy.deepcopy(self.default_answer)
+            simulated_answers['pairs']['ids'] = gui_infos['combinaisons']
 
-        rewards = gui_infos['rewards']
-        answers = np.array([{True: 'r', False: 'l'}[np.logical_and(random.uniform(0, 1) > self.prob,
-                                                                   rewards[i1] < rewards[i2])]
-                            for i1, i2 in gui_infos['combinaisons']])
-        simulated_answers['pairs']['answers'] = answers
-        return simulated_answers
+            rewards = gui_infos['rewards']
+            answers = np.array([{True: 'r', False: 'l'}[np.logical_and(random.uniform(0, 1) > self.prob,
+                                                                       rewards[i1] < rewards[i2])]
+                                for i1, i2 in gui_infos['combinaisons']])
+            simulated_answers['pairs']['answers'] = answers
+            self.preferences = simulated_answers
+        return self.preferences
