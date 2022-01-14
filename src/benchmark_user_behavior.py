@@ -25,7 +25,7 @@ from user_behavior import SelectRewardWithProbUser, SelectRandomRewardUser, Sele
 
 
 def launch_training(params):
-    i, user_type, writer_logdir = params
+    i, user, writer_logdir = params
     print(i, writer_logdir)
     # model definition
     params = json.load(open("params.json", 'rb'))
@@ -43,7 +43,7 @@ def launch_training(params):
                                    policy_class=Policy,
                                    policy_kwargs=params['policy_kwargs'],
                                    dataset=params['dataset'],
-                                   user_behavior=user_type,
+                                   user=user,
                                    debug=1, **params['algo_kwargs'])
 
     debut = time.time()
@@ -60,7 +60,7 @@ def launch_training(params):
     f = eval(f'lambda x : {model.logger["best_expression"]}')
     y_pred = f(model.env.X_test.values)
 
-    scores = []
+    scores = [user.name]
     for m in metrics:
         try:
             scores += [m(model.env.y_test, y_pred)]
@@ -76,15 +76,18 @@ if __name__ == "__main__":
 
     combinaitions = []
     for i in range(nb_tests):
-        for user in [SelectRewardWithProbUser(0.8), SelectRewardWithProbUser(0.6),
-                     SelectRewardWithProbUser(0.4), SelectRewardWithProbUser(0.2),
-                     SelectRandomRewardUser(), SelectBestRewardUser()]:
-            combinaitions.append([i, user, f"../results/user_benchmark/{user.type}"])
-
+        for reuse in [True, False]:
+            interaction_frequency = 2
+            user_params = {'reuse': reuse,
+                           'interaction_frequency': interaction_frequency}
+            for user in [SelectRewardWithProbUser(0.8, **user_params), SelectRewardWithProbUser(0.6, **user_params),
+                         SelectRewardWithProbUser(0.4, **user_params), SelectRewardWithProbUser(0.2, **user_params),
+                         SelectRandomRewardUser(**user_params), SelectBestRewardUser(**user_params)]:
+                combinaitions.append([i, user, f"../results/user_benchmark/{user.type}"])
 
     with Pool(6) as p:
             scores = p.map(launch_training, combinaitions)
 
     pd.DataFrame(data=scores,
-                 columns=["mse", "mae", "r2", "nrmse", "result", 'time']).to_csv(
+                 columns=["name", "mse", "mae", "r2", "nrmse", "result", 'time']).to_csv(
         f"../results/user_benchmark_{time.time()}.csv")
