@@ -15,22 +15,36 @@ from policies import Policy
 from user_behavior import RealUser
 
 
-def launch_training(writer_logdir):
+def launch_training(writer_logdir="./test", dataset_value="nguyen4", grammar_with_without_value="with",
+                    frequency_value=5):
     # model definition
     params = json.load(open("params.json", 'rb'))
+    params['dataset'] = dataset_value
+    params['env_kwargs']["grammar_file_path"] = params[dataset_value]["grammar_file_path"]
+    params['env_kwargs']["train_data_path"] = params[dataset_value]["train_data_path"]
+    params['env_kwargs']["test_data_path"] = params[dataset_value]["test_data_path"]
+
+    if grammar_with_without_value == "with":
+        params['env_kwargs']["grammar_file_path"] = params['env_kwargs']["grammar_file_path"].replace('.bnf', "_with_const.bnf")
+
     params['env_kwargs']["grammar_file_path"] = os.path.join(params['folder_path'],
                                                              params['env_kwargs']["grammar_file_path"])
     params['env_kwargs']["train_data_path"] = os.path.join(params['folder_path'],
                                                            params['env_kwargs']["train_data_path"])
     params['env_kwargs']["test_data_path"] = os.path.join(params['folder_path'],
                                                           params['env_kwargs']["test_data_path"])
+
+    user_kwargs = {'reuse': True,
+                   'interaction_frequency': frequency_value}
+    params['algo_kwargs']['risk_eps'] /= user_kwargs['interaction_frequency']
+
     model = PreferenceReinforceGUI(env_class=BatchSymbolicRegressionEnv,
                                    writer_logdir=writer_logdir,
                                    env_kwargs=params['env_kwargs'],
                                    policy_class=Policy,
                                    policy_kwargs=params['policy_kwargs'],
                                    dataset=params['dataset'],
-                                   user_behavior=RealUser(),
+                                   user=RealUser(gui_data_path=writer_logdir, **user_kwargs),
                                    debug=1, **params['algo_kwargs'])
     model.train(params['n_epochs'])
 
