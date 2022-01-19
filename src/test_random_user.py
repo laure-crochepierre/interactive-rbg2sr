@@ -20,10 +20,10 @@ from policies import Policy
 from user_behavior import SelectRandomRewardUser
 
 
-def launch_training(interaction_frequency=2, reuse=True, writer_logdir=None):
+def launch_training(interaction_frequency=15, reuse=True, writer_logdir=None):
 
     if writer_logdir is None:
-        writer_logdir = f"../results/test/random/interaction_freq_{interaction_frequency}/{time.time()}"
+        writer_logdir = f"../results/test/best/interaction_freq_{interaction_frequency}/{time.time()}"
 
     if not isinstance(reuse, bool):
         reuse = reuse == True
@@ -36,7 +36,7 @@ def launch_training(interaction_frequency=2, reuse=True, writer_logdir=None):
                                                            params['env_kwargs']["train_data_path"])
     params['env_kwargs']["test_data_path"] = os.path.join(params['folder_path'],
                                                           params['env_kwargs']["test_data_path"])
-    #params['algo_kwargs']["learning_rate"] = params['algo_kwargs']["learning_rate"] / interaction_frequency
+    params['algo_kwargs']["learning_rate"] = 0.01
     params["n_epochs"] = 1000
     params['algo_kwargs']['risk_eps'] = 0.05
 

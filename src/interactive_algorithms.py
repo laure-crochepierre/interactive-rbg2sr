@@ -201,8 +201,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
 
     @torch.inference_mode()
     def sample_episodes(self, i_epoch=0):
-
-        if (i_epoch % self.user.interaction_frequency == 0) & self.user.reuse & (self.past_trajectories is not None):
+        if (i_epoch % self.user.interaction_frequency != 0) & self.user.reuse & (self.past_trajectories is not None):
             print(f'Epoch n° {i_epoch}: reuse past trajectories')
             suggested_trajectories = [{"action_ids": t} for t in self.past_trajectories]
             transitions, final_rewards, _ = self.simulate_trajectories(suggested_trajectories)
@@ -295,7 +294,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         return batch, final_rewards
 
     def optimize_model(self, batch, final_rewards, i_epoch):
-        if self.apply_reinforce & (self.remaining_reinforce_iteration <= 0):
+        if (self.apply_reinforce & (self.remaining_reinforce_iteration <= 0)):
             print('Use Reinforce')
             super(PreferenceReinforceGUI, self).optimize_model(batch, final_rewards, i_epoch)
             self.remaining_reinforce_iteration -= 1
@@ -319,11 +318,11 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         self.optimize(batch, preferences_indices, preference_probs, top_epsilon_quantile, i_epoch)
 
     def ask_for_preferences(self, top_epsilon_quantile, final_rewards, i_epoch):
-        unique_indexes = np.array([self.env.translations.index(x) for x in set(self.env.translations)])
-        top_indices = np.argwhere(final_rewards >= top_epsilon_quantile)
-        indices_to_compare = np.intersect1d(top_indices, unique_indexes)
+        #unique_indexes = np.array([self.env.translations.index(x) for x in set(self.env.translations)])
+        top_indices = np.argwhere(final_rewards >= top_epsilon_quantile)[:, 0]
+        #indices_to_compare = np.intersect1d(top_indices, unique_indexes)
         try:
-            combinaisons_to_compare = random.choices(list(itertools.combinations(indices_to_compare, 2)), k=5)
+            combinaisons_to_compare = random.choices(list(itertools.combinations(top_indices, 2)), k=5)
         except Exception as e:
             print(e)
 
@@ -343,7 +342,8 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                                      "start_symbol": self.env.start_symbol}}
         else:
             gui_infos = {"combinaisons": combinaisons_to_compare,
-                         "rewards": final_rewards}
+                         "rewards": final_rewards,
+                         "translations": self.env.translations}
         gui_answers = self.user.select_preference(gui_infos, i_epoch)
 
         self.gui_answers = gui_answers
@@ -445,9 +445,6 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             c_in = torch.Tensor(c_out)
             if done.sum() == nb_suggestions:
                 break
-
-        if suggestions_infos["translations"] != self.env.translations:
-            print(suggestions_infos["translations"], self.env.translations)
 
         assert suggestions_infos["translations"] == self.env.translations
         final_rewards = self.env.simulate_reward(nb_suggestions, suggestions_infos["translations"])

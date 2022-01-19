@@ -28,5 +28,15 @@
     "observe_parent": true,
     "observe_brotherhood": true},
   "dataset": "nguyen4",
+  "nguyen4": {"train_data_path":  "data/supervised_learning/nguyen4/train.csv",
+              "test_data_path":  "data/supervised_learning/nguyen4/test.csv",
+              "grammar_file_path":  "grammars/nguyen_benchmark_v2.bnf",
+              "start_symbol": "<e>"
+  },
+  "case14": {"train_data_path":  "data/case14/nguyen4/train.csv",
+              "test_data_path":  "data/case14/nguyen4/test.csv",
+              "grammar_file_path":  "grammars/case14.bnf",
+              "start_symbol": "<expr>"
+  },
   "batch_size": 1000,
   "n_epochs": 2000}

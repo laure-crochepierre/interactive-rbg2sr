@@ -17,10 +17,8 @@ import numpy as np
 from abc import ABC
 
 
-
 class User(ABC):
     def __init__(self, reuse=False, interaction_frequency=1):
-
         self.default_answer = {"pairs": {"ids": [], "answers": []},
                                "classes": {"top": [], "middle": [], 'low': []},
                                "suggest": []}
@@ -37,19 +35,20 @@ class User(ABC):
 class RealUser(User):
     def __init__(self, gui_data_path, **kwargs):
         super(RealUser, self).__init__(**kwargs)
-        self.gui_data_path = gui_data_path
+        self.gui_data_path = os.path.join(gui_data_path, "gui_data")
         self.description = "Real user. Preferences are queried with an interactive interface"
         self.type = "real"
+        self.rules = None
 
     def select_preference(self, gui_infos, i_epoch):
         if i_epoch % self.interaction_frequency == 0:
             pickle.dump(gui_infos, open(os.path.join(self.gui_data_path, f"{i_epoch}.pkl"), 'wb'))
-
             while not os.path.exists(os.path.join(self.gui_data_path, f"{i_epoch}_answers.pkl")):
                 time.sleep(2)
-
             gui_answers = pickle.load(open(os.path.join(self.gui_data_path, f"{i_epoch}_answers.pkl"), 'rb'))
             self.preferences = gui_answers
+            if 'rules' in list(gui_answers.keys()):
+                self.rules = gui_answers['rules']
         return self.preferences
 
 
