@@ -339,7 +339,7 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
             ])
         ], color="secondary")
 
-        if isinstance(children, list) and (len(children) > 1):
+        if isinstance(children, list) and (len(children) > 0):
             hidden_during = False
             hidden_iteration_data = False
             hidden_waiter = True
@@ -414,7 +414,7 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
                   'Reward': round(rewards[translations.index(t)], 2)}
                  for t in top_expressions]
 
-    children_blocks = [] #[html.H4(f"Iteration n°{current_step}", style={"textAlign":'center'})]
+    children_blocks = [html.H4(f"Iteration n°{current_step}", style={"textAlign":'center'})]
     for i_pair, pair_ids in enumerate(combinaisons):
         id_left, id_right = pair_ids
         pair_ids = str(pair_ids)
