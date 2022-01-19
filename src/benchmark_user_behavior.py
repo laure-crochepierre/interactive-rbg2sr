@@ -58,7 +58,7 @@ def launch_training(params):
     metrics = [mean_squared_error, mean_absolute_error, r2_score, nrmse]
 
     f = eval(f'lambda x : {model.logger["best_expression"]}')
-    y_pred = f(model.env.X_test.values)
+    y_pred = f(model.env.X_test)
 
     scores = [user.type]
     for m in metrics:

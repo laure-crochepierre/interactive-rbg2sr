@@ -339,7 +339,7 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
             ])
         ], color="secondary")
 
-        if isinstance(children, list) and (len(children) > 0):
+        if isinstance(children, list) and (len(children) > 1):
             hidden_during = False
             hidden_iteration_data = False
             hidden_waiter = True
@@ -405,6 +405,7 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
     if grammar is None:
         grammar = pairs_data['grammar']
 
+    translations = [t.replace(']]', ']').replace('x.columns[', ':,') for t in translations]
     top_expressions = sorted(list(set([translations[i] for i in top_indices])),
                                   key=lambda t: rewards[translations.index(t)], reverse=True)
 

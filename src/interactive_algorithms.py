@@ -314,7 +314,6 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             final_rewards += simulated_rewards
             batch += simulated_transitions
 
-        assert (final_rewards == self.final_rewards).all()
         self.optimize(batch, preferences_indices, preference_probs, top_epsilon_quantile, i_epoch)
 
     def ask_for_preferences(self, top_epsilon_quantile, final_rewards, i_epoch):
@@ -446,7 +445,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             if done.sum() == nb_suggestions:
                 break
 
-        assert suggestions_infos["translations"] == self.env.translations
+        #assert suggestions_infos["translations"] == self.env.translations
         final_rewards = self.env.simulate_reward(nb_suggestions, suggestions_infos["translations"])
         for i in range(nb_suggestions):
             for j in range(len(transitions[i])):
