@@ -23,10 +23,16 @@ from interactive_algorithms import PreferenceReinforceGUI
 from policies import Policy
 from user_behavior import SelectRewardWithProbUser, SelectRandomRewardUser, SelectBestRewardUser
 
-
+columns = ["name", "reuse", "interaction_frequency",
+                          "mse", "mae", "r2", "nrmse", "result", 'time']
 def launch_training(params):
-    i, user, writer_logdir = params
+    i, reuse, interaction_frequency, user, writer_logdir = params
+
     print(i, writer_logdir)
+
+    np.random.seed(i)
+    torch.random.manual_seed(i)
+
     # model definition
     params = json.load(open("params.json", 'rb'))
     params['env_kwargs']["grammar_file_path"] = os.path.join(params['folder_path'],
@@ -60,34 +66,36 @@ def launch_training(params):
     f = eval(f'lambda x : {model.logger["best_expression"]}')
     y_pred = f(model.env.X_test)
 
-    scores = [user.type]
+    scores = [user.type, reuse, interaction_frequency]
     for m in metrics:
         try:
             scores += [m(model.env.y_test, y_pred)]
         except Exception as e:
             scores += [e]
     scores += [model.logger["best_expression"], duree]
+    pd.DataFrame(data=[scores],
+                 columns=columns).to_csv(f"{writer_logdir}/{time.time()}.csv")
     return scores
 
 
 if __name__ == "__main__":
-    nb_tests = 30
+    nb_tests = 10
     scores = []
 
     combinaitions = []
     for i in range(nb_tests):
         for reuse in [True, False]:
-            interaction_frequency = 2
-            user_params = {'reuse': reuse,
-                           'interaction_frequency': interaction_frequency}
-            for user in [SelectRewardWithProbUser(0.8, **user_params), SelectRewardWithProbUser(0.6, **user_params),
-                         SelectRewardWithProbUser(0.4, **user_params), SelectRewardWithProbUser(0.2, **user_params),
-                         SelectRandomRewardUser(**user_params), SelectBestRewardUser(**user_params)]:
-                combinaitions.append([i, user, f"../results/user_benchmark/{user.type}"])
+            for interaction_frequency in [2, 5, 10, 15, 20]:
+                user_params = {'reuse': reuse,
+                               'interaction_frequency': interaction_frequency}
+                for user in [SelectRewardWithProbUser(0.8, **user_params), SelectRewardWithProbUser(0.6, **user_params),
+                             SelectRewardWithProbUser(0.4, **user_params), SelectRewardWithProbUser(0.2, **user_params),
+                             SelectRandomRewardUser(**user_params), SelectBestRewardUser(**user_params)]:
+                    logdir = f"../results/user_benchmark/reuse_{reuse}/{user.type}/freq_{interaction_frequency}/{i}"
+                    combinaitions.append([i, reuse, interaction_frequency, user, logdir])
 
-    with Pool(6) as p:
+    with Pool(10) as p:
             scores = p.map(launch_training, combinaitions)
 
     pd.DataFrame(data=scores,
-                 columns=["name", "mse", "mae", "r2", "nrmse", "result", 'time']).to_csv(
-        f"../results/user_benchmark_{time.time()}.csv")
+                 columns=columns).to_csv(f"../results/user_benchmark_{time.time()}.csv")
