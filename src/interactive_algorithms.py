@@ -176,29 +176,41 @@ class DemonstrationReinforceAlgorithm(ReinforceAlgorithm):
         return action
 
 
-class PreferenceReinforceAlgorithm(ReinforceAlgorithm):
-    def __init__(self, x_label="x", **kwargs):
-        super(PreferenceReinforceAlgorithm, self).__init__(**kwargs)
+class PreferenceReinforceGUI(ReinforceAlgorithm):
+    def __init__(self, user=SelectBestRewardUser(),  x_label="x", **kwargs):
+        super(PreferenceReinforceGUI, self).__init__(**kwargs)
+        self.gui_data_path = os.path.join(self.writer.log_dir, 'gui_data')
+        os.makedirs(self.gui_data_path, exist_ok=True)
 
-        self.combinaisons_to_compare = None
+        self.gui_answers = None
+        self.user = user
+
+        # params to store preferences
         self.final_rewards = None
+        self.past_trajectories = None
 
-        self.preferences = {}
+        # Parameters used to combine REINFORCE algorithm with interactivity every n steps
         self.n_reinforce_step = 0
         self.remaining_reinforce_iteration = self.n_reinforce_step
-        self.apply_reinforce = True
+        self.apply_reinforce = False
         self.x_label = x_label
 
     def create_summary_writer(self):
         return SummaryWriter(log_dir=self.writer_logdir,
-                             comment=f"Preference_Reinforce_experiment_{self.dataset}_{time.time()}")
+                                    comment=f"Preference_with_GUI_Reinforce_experiment_{self.dataset}_{time.time()}")
 
     @torch.inference_mode()
     def sample_episodes(self, i_epoch=0):
-        print(f'Epoch n° {i_epoch}')
-        self.combinaisons_to_compare = None
+        if (i_epoch % self.user.interaction_frequency != 0) & self.user.reuse & (self.past_trajectories is not None):
+            print(f'Epoch n° {i_epoch}: reuse past trajectories')
+            suggested_trajectories = [{"action_ids": t} for t in self.past_trajectories]
+            transitions, final_rewards, _ = self.simulate_trajectories(suggested_trajectories)
+            return transitions, final_rewards
+
+        print(f'Epoch n° {i_epoch}: sample new trajectories')
         batch = None
         final_rewards = None
+        self.past_trajectories = [[] for _ in range(self.batch_size)]
         while batch is None:
 
             h_in = self.init_type((1, self.batch_size, self.env.hidden_size))
@@ -228,6 +240,7 @@ class PreferenceReinforceAlgorithm(ReinforceAlgorithm):
                                                c_in[0, i],
                                                action[i], past_done[i], done[i]]
                         transitions[i].append(transition)
+                        self.past_trajectories[i] += [int(action[i][0])]
                         if done[i] == 1:
                             horizon[i] = t
 
@@ -277,85 +290,21 @@ class PreferenceReinforceAlgorithm(ReinforceAlgorithm):
                             self.writer.add_histogram(f"Weigths/{name}", weight, global_step=i_epoch)
                         self.writer.flush()
 
+        self.final_rewards = final_rewards
         return batch, final_rewards
 
-    def ask_for_preferences(self, top_epsilon_quantile, final_rewards, i_epoch):
-        unique_indexes = np.array([self.env.translations.index(x) for x in set(self.env.translations)])
-        top_indices = np.argwhere(final_rewards > top_epsilon_quantile)
-        indices_to_compare = np.intersect1d(top_indices, unique_indexes)
-        combinaisons_to_compare = random.choices(list(itertools.combinations(indices_to_compare, 2)), k=10)
-
-        preferences_indices = []
-        preference_probs = []
-        for combination_number_i, combinaison in enumerate(combinaisons_to_compare):
-            id_left, id_right = combinaison
-            expressions_data = [self.env.translations[id_left], self.env.translations[id_right]]
-            rewards_data = [self.final_rewards[id_left], self.final_rewards[id_right]]
-            prob_left = np.exp(self.final_rewards[id_left])/(np.exp(self.final_rewards[id_right]) + np.exp(self.final_rewards[id_left]))
-            prob_right = np.exp(self.final_rewards[id_right])/(np.exp(self.final_rewards[id_right]) + np.exp(self.final_rewards[id_left]))
-
-            correct_answer = False
-            while not correct_answer:
-                print()
-                print(f"Combination n°{combination_number_i}")
-                print(tabulate([expressions_data, rewards_data],
-                               headers=['Left Expression', 'Right Expression'],
-                               tablefmt="presto"))
-                input_text = 'Which one do you prefer ? \n' \
-                             '- "right" (or "r"),\n' \
-                             '- "left" (or "l"),\n' \
-                             '- "both" (or "b"), meaning it\'s a tie \n' \
-                             '- "none" (or"n"), meaning I can\'t tell \n' \
-                             'Answer : '
-                if (self.env.translations[id_right], self.env.translations[id_left]) in self.preferences.keys():
-                    input_text = f'Past preference in history : {self.preferences[(self.env.translations[id_right], self.env.translations[id_left])]}\n' + input_text
-                elif (self.env.translations[id_left], self.env.translations[id_right]) in self.preferences.keys():
-                    input_text = f'Past preference in history : {self.preferences[(self.env.translations[id_left], self.env.translations[id_right])]}\n' + input_text
-                answer = input(input_text)
-                if self.final_rewards[id_right] > self.final_rewards[id_left]:
-                    answer = 'r'
-                elif self.final_rewards[id_right] < self.final_rewards[id_left]:
-                    answer = "l"
-
-                if (answer == "right") or (answer == "r"):
-                    preferences_indices += [id_right]
-                    preference_probs += [prob_right]
-                    correct_answer = True
-                elif (answer == "left") or (answer == "l"):
-                    preferences_indices += [id_left]
-                    preference_probs += [prob_left]
-                    correct_answer = True
-                elif (answer == "both") or (answer == "b"):
-                    preferences_indices += [id_left, id_right]
-                    preference_probs += [1/2*prob_left, 1/2*prob_right]
-                    correct_answer = True
-                elif (answer == "none") or (answer == "n"):
-                    correct_answer = True
-                else:
-                    print("Incorrect answer")
-
-            if self.env.translations[id_right] > self.env.translations[id_left]:
-                self.preferences[(self.env.translations[id_right], self.env.translations[id_left])] = answer
-            else:
-                self.preferences[(self.env.translations[id_right], self.env.translations[id_left])] = answer
-
-        return preferences_indices, torch.Tensor(preference_probs), [], []
-
     def optimize_model(self, batch, final_rewards, i_epoch):
-        if self.apply_reinforce:
-            super(ReinforceAlgorithm, self).optimize_model(batch, final_rewards, i_epoch)
+        if (self.apply_reinforce & (self.remaining_reinforce_iteration <= 0)):
+            print('Use Reinforce')
+            super(PreferenceReinforceGUI, self).optimize_model(batch, final_rewards, i_epoch)
             self.remaining_reinforce_iteration -= 1
-            if self.remaining_reinforce_iteration <= 0:
-                self.apply_reinforce = False
+
         else:
             self.optimize_model_with_preference(batch, final_rewards, i_epoch)
             self.remaining_reinforce_iteration = self.n_reinforce_step
-            self.combinaisons_to_compare = None
-            self.final_rewards = None
-            self.apply_reinforce = True
 
     def optimize_model_with_preference(self, batch, final_rewards, i_epoch):
-        top_epsilon_quantile = np.quantile(np.unique(final_rewards), 1 - self.risk_eps)
+        top_epsilon_quantile = np.quantile(final_rewards, 1 - self.risk_eps)
 
         # Interactivity here : compare pairs of trajectories
         preferences_indices, preference_probs, simulated_rewards, simulated_transitions = \
@@ -367,18 +316,142 @@ class PreferenceReinforceAlgorithm(ReinforceAlgorithm):
 
         self.optimize(batch, preferences_indices, preference_probs, top_epsilon_quantile, i_epoch)
 
-    def optimize_model_with_past_preference(self, batch, final_rewards, i_epoch):
-        top_epsilon_quantile = np.quantile(np.unique(final_rewards), 1 - self.risk_eps)
+    def ask_for_preferences(self, top_epsilon_quantile, final_rewards, i_epoch):
+        #unique_indexes = np.array([self.env.translations.index(x) for x in set(self.env.translations)])
+        top_indices = np.argwhere(final_rewards >= top_epsilon_quantile)[:, 0]
+        #indices_to_compare = np.intersect1d(top_indices, unique_indexes)
+        try:
+            combinaisons_to_compare = random.choices(list(itertools.combinations(top_indices, 2)), k=5)
+        except Exception as e:
+            print(e)
 
-        # Interactivity here : compare pairs of trajectories
-        preferences_indices, preference_probs, simulated_rewards, simulated_transitions = \
-            self.ask_for_preferences(top_epsilon_quantile, final_rewards, i_epoch)
+        gui_infos = None
+        if isinstance(self.user, RealUser):
 
-        if simulated_transitions is not None:
-            final_rewards += simulated_rewards
-            batch += simulated_transitions
+            # save current population to file
+            gui_infos = {"combinaisons": combinaisons_to_compare,
+                         "translations": self.env.translations,
+                         "x": self.env.X_test[self.x_label],
+                         "predicted_values": self.env.get_predicted_values(),
+                         "target_values": self.env.y_test,
+                         "top_indices": top_indices,
+                         "rewards": final_rewards,
+                         'grammar': {'productions_list': self.env.grammar.productions_list,
+                                     'productions_dict': self.env.grammar.productions_dict,
+                                     "start_symbol": self.env.start_symbol}}
+        else:
+            gui_infos = {"combinaisons": combinaisons_to_compare,
+                         "rewards": final_rewards,
+                         "translations": self.env.translations}
+        gui_answers = self.user.select_preference(gui_infos, i_epoch)
 
-        self.optimize(batch, preferences_indices, preference_probs, top_epsilon_quantile, i_epoch)
+        self.gui_answers = gui_answers
+        return self.use_preferences(gui_answers, final_rewards)
+
+    def use_preferences(self, gui_answers, final_rewards):
+        suggestions = gui_answers["suggest"]
+
+        if isinstance(suggestions, dict):
+            suggestions = [suggestions]
+
+        pairs_ids = gui_answers["pairs"]['ids']
+        answers = gui_answers["pairs"]['answers']
+
+        if suggestions != []:
+            with torch.inference_mode():
+                simulated_transitions, simulated_rewards, simulated_translations = self.simulate_trajectories(suggestions)
+        else :
+            simulated_transitions, simulated_rewards, simulated_translations = None, [], None
+
+        preferences_indices = []
+        preference_probs = []
+
+        for sim_i, sim_reward in enumerate(simulated_rewards):
+            id_comparison = suggestions[sim_i]["comparison_with_id"]
+            prob_comparison = np.exp(sim_reward) / (np.exp(sim_reward) + np.exp(final_rewards[id_comparison]))
+            preference_probs = [prob_comparison]
+            preferences_indices = [len(final_rewards) + sim_i]
+
+        for i_top in gui_answers["classes"]['top']:
+            for i_middle_to_low in gui_answers["classes"]['middle'] + gui_answers["classes"]['low']:
+                if ([i_top, i_middle_to_low] not in pairs_ids) and ([i_middle_to_low, i_top] not in pairs_ids):
+                    pairs_ids.append([i_top, i_middle_to_low])
+                    answers.append("l")
+        for i_middle in gui_answers["classes"]['middle']:
+            for i_low in gui_answers["classes"]['low']:
+                if ([i_middle, i_low] not in pairs_ids) and ([i_low, i_middle] not in pairs_ids):
+                    pairs_ids.append([i_middle, i_low])
+                    answers.append("l")
+
+        for combinaison, answer in zip(pairs_ids, answers):
+            id_left, id_right = combinaison
+            expressions_data = [self.env.translations[id_left], self.env.translations[id_right]]
+            rewards_data = [final_rewards[id_left], final_rewards[id_right]]
+            prob_left = np.exp(final_rewards[id_left])/(np.exp(final_rewards[id_right]) + np.exp(final_rewards[id_left]))
+            prob_right = np.exp(final_rewards[id_right])/(np.exp(final_rewards[id_right]) + np.exp(final_rewards[id_left]))
+
+            if (answer == "right") or (answer == "r"):
+                preferences_indices += [id_right]
+                preference_probs += [prob_right]
+            elif (answer == "left") or (answer == "l"):
+                preferences_indices += [id_left]
+                preference_probs += [prob_left]
+            elif (answer == "both") or (answer == "b"):
+                preferences_indices += [id_left, id_right]
+                preference_probs += [1/2*prob_left, 1/2*prob_right]
+
+        return preferences_indices, torch.Tensor(preference_probs), simulated_rewards, simulated_transitions
+
+    def simulate_trajectories(self, suggested_trajectories):
+        nb_suggestions = len(suggested_trajectories)
+        h_in = self.init_type((1, nb_suggestions, self.env.hidden_size))
+        c_in = self.init_type((1, nb_suggestions, self.env.hidden_size))
+
+        state, suggestions_infos = self.env.simulate_reset(nb_suggestions)
+        past_done = torch.zeros((nb_suggestions, 1))
+        horizon = torch.ones((nb_suggestions, 1))
+
+        transitions = [[] for _ in range(nb_suggestions)]
+        for h in range(self.env.max_horizon):
+            if suggested_trajectories:
+                suggested_actions = torch.Tensor([
+                    {True: suggestion['action_ids'][h%len(suggestion['action_ids'])], False: 0}[h < len(suggestion['action_ids'])]
+                    for suggestion in suggested_trajectories])
+
+            if self.env.observe_hidden_state:
+                state['h'] = h_in.reshape((nb_suggestions, 1, self.env.hidden_size)).detach().numpy()
+                state['c'] = c_in.reshape((nb_suggestions, 1, self.env.hidden_size)).detach().numpy()
+            action, log_prob, entropy, h_out, c_out, _ = self.policy.select_action(state, h_in, c_in, suggested_actions)
+
+            next_state, done, suggestions_infos = self.env.simulate_step(suggested_actions,
+                                                                         nb_suggestions,
+                                                                         suggestions_infos)
+
+            for i in range(nb_suggestions):
+                if past_done[i] != 1:
+                    transition = [{k: v[i] for k, v in state.items()},
+                                  h_in[0, i],
+                                  c_in[0, i],
+                                  action[i], past_done[i], done[i]]
+                    transitions[i].append(transition)
+                    if done[i] == 1:
+                        horizon[i] = h
+
+            # Update step information
+            past_done = torch.Tensor(done)
+            state = next_state
+            h_in = torch.Tensor(h_out)
+            c_in = torch.Tensor(c_out)
+            if done.sum() == nb_suggestions:
+                break
+
+        #assert suggestions_infos["translations"] == self.env.translations
+        final_rewards = self.env.simulate_reward(nb_suggestions, suggestions_infos["translations"])
+        for i in range(nb_suggestions):
+            for j in range(len(transitions[i])):
+                transitions[i][j] += [final_rewards[i]]
+
+        return transitions, final_rewards, suggestions_infos["translations"]
 
     def optimize(self, batch, preferences_indices, preference_probs, top_epsilon_quantile, i_epoch):
         def filter_combinaisons(b, indices, preferences):
@@ -446,166 +519,74 @@ class PreferenceReinforceAlgorithm(ReinforceAlgorithm):
         self.writer.add_scalar('Losses/Policy Loss', policy_loss.sum().detach().numpy(), i_epoch)
 
 
-class PreferenceReinforceGUI(PreferenceReinforceAlgorithm):
-    def __init__(self, user_behavior=SelectBestRewardUser(), **kwargs):
-        super(PreferenceReinforceGUI, self).__init__(**kwargs)
-        self.gui_data_path = os.path.join(self.writer.log_dir, 'gui_data')
-        os.makedirs(self.gui_data_path, exist_ok=True)
+class PreferenceReinforceAlgorithm(PreferenceReinforceGUI):
+    def __init__(self, **kwargs):
+        super(PreferenceReinforceAlgorithm, self).__init__(**kwargs)
 
-        self.gui_answers = None
-        self.user_behavior = user_behavior
+        self.preferences = {}
 
     def create_summary_writer(self):
         return SummaryWriter(log_dir=self.writer_logdir,
-                                    comment=f"Preference_with_GUI_Reinforce_experiment_{self.dataset}_{time.time()}")
-
-    def optimize_model(self, batch, final_rewards, i_epoch):
-        """if self.apply_reinforce:
-            super(ReinforceAlgorithm, self).optimize_model(batch, final_rewards, i_epoch)
-
-            self.remaining_reinforce_iteration -= 1
-            if self.remaining_reinforce_iteration <= 0:
-                self.apply_reinforce = False
-        else:"""
-        self.optimize_model_with_preference(batch, final_rewards, i_epoch)
-        self.remaining_reinforce_iteration = self.n_reinforce_step
-        self.apply_reinforce = True
+                             comment=f"Preference_Reinforce_experiment_{self.dataset}_{time.time()}")
 
     def ask_for_preferences(self, top_epsilon_quantile, final_rewards, i_epoch):
         unique_indexes = np.array([self.env.translations.index(x) for x in set(self.env.translations)])
         top_indices = np.argwhere(final_rewards > top_epsilon_quantile)
         indices_to_compare = np.intersect1d(top_indices, unique_indexes)
-        combinaisons_to_compare = random.choices(list(itertools.combinations(indices_to_compare, 2)), k=5)
-        gui_infos = None
-        if isinstance(self.user_behavior, RealUser):
-
-            # save current population to file
-            gui_infos = {"combinaisons": combinaisons_to_compare,
-                         "translations": self.env.translations,
-                         "x": self.env.X_test[self.x_label],
-                         "predicted_values": self.env.get_predicted_values(),
-                         "target_values": self.env.y_test,
-                         "top_indices": top_indices,
-                         "rewards": final_rewards,
-                         'grammar': {'productions_list': self.env.grammar.productions_list,
-                                     'productions_dict': self.env.grammar.productions_dict,
-                                     "start_symbol": self.env.start_symbol}}
-        else:
-            gui_infos = {"combinaisons": combinaisons_to_compare,
-                         "rewards": final_rewards}
-        gui_answers = self.user_behavior.select_preference(gui_infos, i_epoch)
-
-        self.gui_answers = gui_answers
-        return self.use_preferences(gui_answers, final_rewards)
-
-    def use_preferences(self, gui_answers, final_rewards):
-        suggestions = gui_answers["suggest"]
-
-        if isinstance(suggestions, dict):
-            suggestions = [suggestions]
-
-        pairs_ids = gui_answers["pairs"]['ids']
-        answers = gui_answers["pairs"]['answers']
-
-        if suggestions != []:
-            with torch.inference_mode():
-                simulated_transitions, simulated_rewards, simulated_translations = self.simulate_trajectories(suggestions)
-        else :
-            simulated_transitions, simulated_rewards, simulated_translations = None, [], None
+        combinaisons_to_compare = random.choices(list(itertools.combinations(indices_to_compare, 2)), k=10)
 
         preferences_indices = []
         preference_probs = []
-
-        for sim_i, sim_reward in enumerate(simulated_rewards):
-            id_comparison = suggestions[sim_i]["comparison_with_id"]
-            prob_comparison = np.exp(sim_reward) / (np.exp(sim_reward) + np.exp(final_rewards[id_comparison]))
-            preference_probs = [prob_comparison]
-            preferences_indices = [len(final_rewards) + sim_i]
-
-        for i_top in gui_answers["classes"]['top']:
-            for i_middle_to_low in gui_answers["classes"]['middle'] + gui_answers["classes"]['low']:
-                if ([i_top, i_middle_to_low] not in pairs_ids) and ([i_middle_to_low, i_top] not in pairs_ids):
-                    pairs_ids.append([i_top, i_middle_to_low])
-                    answers.append("l")
-        for i_middle in gui_answers["classes"]['middle']:
-            for i_low in gui_answers["classes"]['low']:
-                if ([i_middle, i_low] not in pairs_ids) and ([i_low, i_middle] not in pairs_ids):
-                    pairs_ids.append([i_middle, i_low])
-                    answers.append("l")
-
-        for combinaison, answer in zip(pairs_ids, answers):
+        for combination_number_i, combinaison in enumerate(combinaisons_to_compare):
             id_left, id_right = combinaison
             expressions_data = [self.env.translations[id_left], self.env.translations[id_right]]
-            rewards_data = [final_rewards[id_left], final_rewards[id_right]]
-            prob_left = np.exp(final_rewards[id_left])/(np.exp(final_rewards[id_right]) + np.exp(final_rewards[id_left]))
-            prob_right = np.exp(final_rewards[id_right])/(np.exp(final_rewards[id_right]) + np.exp(final_rewards[id_left]))
+            rewards_data = [self.final_rewards[id_left], self.final_rewards[id_right]]
+            prob_left = np.exp(self.final_rewards[id_left])/(np.exp(self.final_rewards[id_right]) + np.exp(self.final_rewards[id_left]))
+            prob_right = np.exp(self.final_rewards[id_right])/(np.exp(self.final_rewards[id_right]) + np.exp(self.final_rewards[id_left]))
 
-            if (answer == "right") or (answer == "r"):
-                preferences_indices += [id_right]
-                preference_probs += [prob_right]
-            elif (answer == "left") or (answer == "l"):
-                preferences_indices += [id_left]
-                preference_probs += [prob_left]
-            elif (answer == "both") or (answer == "b"):
-                preferences_indices += [id_left, id_right]
-                preference_probs += [1/2*prob_left, 1/2*prob_right]
+            correct_answer = False
+            while not correct_answer:
+                print()
+                print(f"Combination n°{combination_number_i}")
+                print(tabulate([expressions_data, rewards_data],
+                               headers=['Left Expression', 'Right Expression'],
+                               tablefmt="presto"))
+                input_text = 'Which one do you prefer ? \n' \
+                             '- "right" (or "r"),\n' \
+                             '- "left" (or "l"),\n' \
+                             '- "both" (or "b"), meaning it\'s a tie \n' \
+                             '- "none" (or"n"), meaning I can\'t tell \n' \
+                             'Answer : '
+                if (self.env.translations[id_right], self.env.translations[id_left]) in self.preferences.keys():
+                    input_text = f'Past preference in history : {self.preferences[(self.env.translations[id_right], self.env.translations[id_left])]}\n' + input_text
+                elif (self.env.translations[id_left], self.env.translations[id_right]) in self.preferences.keys():
+                    input_text = f'Past preference in history : {self.preferences[(self.env.translations[id_left], self.env.translations[id_right])]}\n' + input_text
+                answer = input(input_text)
+                if self.final_rewards[id_right] > self.final_rewards[id_left]:
+                    answer = 'r'
+                elif self.final_rewards[id_right] < self.final_rewards[id_left]:
+                    answer = "l"
+
+                if (answer == "right") or (answer == "r"):
+                    preferences_indices += [id_right]
+                    preference_probs += [prob_right]
+                    correct_answer = True
+                elif (answer == "left") or (answer == "l"):
+                    preferences_indices += [id_left]
+                    preference_probs += [prob_left]
+                    correct_answer = True
+                elif (answer == "both") or (answer == "b"):
+                    preferences_indices += [id_left, id_right]
+                    preference_probs += [1/2*prob_left, 1/2*prob_right]
+                    correct_answer = True
+                elif (answer == "none") or (answer == "n"):
+                    correct_answer = True
+                else:
+                    print("Incorrect answer")
 
             if self.env.translations[id_right] > self.env.translations[id_left]:
                 self.preferences[(self.env.translations[id_right], self.env.translations[id_left])] = answer
             else:
                 self.preferences[(self.env.translations[id_right], self.env.translations[id_left])] = answer
 
-        return preferences_indices, torch.Tensor(preference_probs), simulated_rewards, simulated_transitions
-
-    def simulate_trajectories(self, suggested_trajectories):
-        nb_suggestions = len(suggested_trajectories)
-        h_in = self.init_type((1, nb_suggestions, self.env.hidden_size))
-        c_in = self.init_type((1, nb_suggestions, self.env.hidden_size))
-
-        state, suggestions_infos = self.env.simulate_reset(nb_suggestions)
-        past_done = torch.zeros((nb_suggestions, 1))
-        horizon = torch.ones((nb_suggestions, 1))
-
-        transitions = [[] for _ in range(nb_suggestions)]
-        for h in range(self.env.max_horizon):
-            if suggested_trajectories:
-                suggested_actions = torch.Tensor([
-                    {True: suggestion['action_ids'][h%len(suggestion['action_ids'])], False: 0}[h < len(suggestion['action_ids'])]
-                    for suggestion in suggested_trajectories])
-
-            if self.env.observe_hidden_state:
-                state['h'] = h_in.reshape((nb_suggestions, 1, self.env.hidden_size)).detach().numpy()
-                state['c'] = c_in.reshape((nb_suggestions, 1, self.env.hidden_size)).detach().numpy()
-            action, log_prob, entropy, h_out, c_out, _ = self.policy.select_action(state, h_in, c_in, suggested_actions)
-
-            next_state, done, suggestions_infos = self.env.simulate_step(suggested_actions,
-                                                                         nb_suggestions,
-                                                                         suggestions_infos)
-
-            for i in range(nb_suggestions):
-                if past_done[i] != 1:
-                    transition = [{k: v[i] for k, v in state.items()},
-                                  h_in[0, i],
-                                  c_in[0, i],
-                                  action[i], past_done[i], done[i]]
-                    transitions[i].append(transition)
-                    if done[i] == 1:
-                        horizon[i] = h
-
-            # Update step information
-            past_done = torch.Tensor(done)
-            state = next_state
-            h_in = torch.Tensor(h_out)
-            c_in = torch.Tensor(c_out)
-            if done.sum() == nb_suggestions:
-                break
-
-        final_rewards = self.env.simulate_reward(nb_suggestions, suggestions_infos["translations"])
-        for i in range(nb_suggestions):
-            for j in range(len(transitions[i])):
-                transitions[i][j] += [final_rewards[i]]
-
-        return transitions, final_rewards, suggestions_infos["translations"]
-
-
-
+        return preferences_indices, torch.Tensor(preference_probs), [], []

@@ -72,15 +72,16 @@ class BatchSymbolicRegressionEnv(gym.Env):
         self.outlier_heuristic = outlier_heuristic
 
         self.target = target  # target variable to predict
+        self.use_np = False
         # Load datasets
         self.X_train, self.X_test = None, None
         if test_data_path is not None:
             if ".feather" in train_data_path:
-                self.X_train = pd.read_feather(train_data_path).iloc[:20000]
-                self.X_test = pd.read_feather(test_data_path).iloc[:20000]
+                self.X_train = pd.read_feather(train_data_path)
+                self.X_test = pd.read_feather(test_data_path)
             elif ".csv" in train_data_path:
-                self.X_train = pd.read_csv(train_data_path).iloc[:20000]
-                self.X_test = pd.read_csv(test_data_path).iloc[:20000]
+                self.X_train = pd.read_csv(train_data_path)
+                self.X_test = pd.read_csv(test_data_path)
             if normalize:
                 if normalization_type == 'standard_scaler':
                     self.scaler = StandardScaler()
@@ -319,7 +320,7 @@ class BatchSymbolicRegressionEnv(gym.Env):
                 str(e)
             try:
                 x = self.X_train
-                if isinstance(x, pd.DataFrame):
+                if isinstance(x, pd.DataFrame) & self.use_np:
                     x = x.values
                 y_pred = eval(t)
                 y_pred[np.isnan(y_pred)] = 0
@@ -328,6 +329,8 @@ class BatchSymbolicRegressionEnv(gym.Env):
                 elif np.mean(np.abs(y_pred)) < 1e-10:
                     return reward
                 else:
+                    if isinstance(y_pred, pd.Series):
+                        y_pred = y_pred.values
                     reward = self.metric(self.y_train.values, y_pred)
 
                 if np.isnan(reward):
@@ -388,7 +391,7 @@ class BatchSymbolicRegressionEnv(gym.Env):
                 #print(e)
             try :
                 x = self.X_test
-                if isinstance(x, pd.DataFrame):
+                if isinstance(x, pd.DataFrame) & self.use_np:
                     x = x.values
                 y_pred = eval(t)
                 y_pred[np.isnan(y_pred)] = 0
@@ -438,13 +441,13 @@ class BatchSymbolicRegressionEnv(gym.Env):
         new_brothers = np.zeros((nb_suggestions, self.grammar.max_brother_symbols, self.n_actions + 1))
 
         for i, action_id in enumerate(action_ids):
-            if self.done[i]:
+            if suggestions_infos['done'][i]:
                 new_symbols[i] = self.grammar.symbol_encoding["#"]
                 new_masks[i] = self.grammar.symbols_to_mask[self.start_symbol]
                 new_parents[i] = self.grammar.action_encoding["#"]
                 new_brothers[i] = np.array([[self.grammar.action_encoding['#'][0]] * self.grammar.max_brother_symbols])
                 continue
-            action = self.grammar.productions_list[action_id]
+            action = self.grammar.productions_list[int(action_id)]
             suggestions_infos['translations'][i] = re.sub("<.+?>", action['raw'], suggestions_infos['translations'][i], 1)
 
             # Store action in list
