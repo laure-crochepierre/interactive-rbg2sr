@@ -48,10 +48,13 @@ waiter = [dbc.Container([dbc.Row(dbc.Col(dbc.Spinner(show_initially=True, color=
 # Launch app
 app = dash.Dash('ipref', external_stylesheets=[dbc.themes.LUMEN, FONT_AWESOME])   # replaces dash.Dash
 app.layout = html.Div([
-    dbc.Row([dbc.Col([
+    dbc.Row([dbc.Col(dbc.Button("Visualize expressions",
+                            id="off-button",
+                            color="primary", style={'margin': 30})),
+                     dbc.Col([
         html.H1("Reinforcement Based Grammar Guided Symbolic Regression with Preference Learning",
                 style={'margin': 25, 'textAlign': 'center'}),
-    ], width={'size': 10}),
+    ], width={'size': 8}),
         dbc.Col([dbc.Button("New training",  # 'Nouvel entrainement',
                             id="new_training",
                             color="primary", style={'margin': 30})
@@ -66,7 +69,7 @@ app.layout = html.Div([
         dbc.Form([
             dbc.Label('Dataset', html_for="dataset-input"),
             dcc.Dropdown(options=[{"label": 'Symbolic Regression benchmark', 'value': "nguyen4"},
-                                  {"label": 'Power System Use case', 'value': "case14"}],
+                                  {"label": 'Power System Use case', 'value': "case14", "disabled":True}],
                          value="nguyen4",
                          id="dataset-input"),
             dbc.Label('Grammar', html_for="grammar-input"),
@@ -76,7 +79,7 @@ app.layout = html.Div([
                          id="grammar-input"),
             dbc.Label('Interaction Frequency', html_for="frequency-input"),
             dcc.Slider(min=1, max=50, step=1, value=5, tooltip={"placement": "bottom", "always_visible": True},
-                            id="frequency-input")
+                       id="frequency-input")
         ], style={"padding": '2%'}),
         dbc.Button("Start Training", #"Commencer l'entrainement",
                                          id="launch-training", n_clicks=0,
@@ -87,7 +90,24 @@ app.layout = html.Div([
     html.Div([dcc.Interval(id="interval-during-training", interval=5*1000, disabled=True),
               html.Div(waiter, id='waiter'),
               html.Div([
+                dbc.Offcanvas(
+                            [
+                                dbc.Label("Select an expression", html_for="visualize-expression-dropdown"),
+                                dcc.Dropdown(clearable=False,
+                                             searchable=True,
+                                             id="visualize-expression-dropdown"),
+                                html.Br(),
+                                dcc.Graph(id="visualize-expression-graph")
+                            ],
+                            id="offcanvas",
+                            title="Visualize Expressions",
+                            is_open=True,
+                            close_button=False,
+                    style={'width': '800px'}
+                    ),
                   dcc.Tabs([
+                      dcc.Tab(label="Categorical preferences", #'Préférences Hautes-Moyennes-Basses',
+                              children=html.Div(id='preference-classes', className="h5"), className="h4"),
                       dcc.Tab(label="Preference pairs", #'Paires de préférences',
                               children=
                                   dbc.Row([
@@ -110,8 +130,6 @@ app.layout = html.Div([
                                       ], width={"size": 8})
                                   ], style={"padding-top": "2%"}, className="h5"),
                               className="h4"),
-                      dcc.Tab(label="High-Medium-Low preferences", #'Préférences Hautes-Moyennes-Basses',
-                              children=html.Div(id='preference-classes', className="h5"), className="h4"),
                       dcc.Tab(label="Solution suggestion", #"Suggestion d'une solution",
                               children=html.Div(id='solution-suggestion', className="h5"), className="h4")
                   ]),
@@ -119,6 +137,15 @@ app.layout = html.Div([
               ], id="iteration_data")],
              hidden=True, id="during-training", style={'margin': 25})
 ])
+
+
+@app.callback([Output('offcanvas', "is_open")],
+              Input('off-button', "n_clicks"))
+def open_off_canevas(n_clicks):
+    ctx = dash.callback_context
+    if ctx.triggered[0]['prop_id'] == ".":
+        raise PreventUpdate
+    return [True]
 
 
 @app.callback([Output('interval-during-training', 'disabled'),
@@ -137,13 +164,17 @@ app.layout = html.Div([
                Output("preference-classes", "children"),
                Output("valider-et-continuer", "children"),
                Output("datatable", "selected_row_ids"),
+               Output('visualize-expression-dropdown', 'options'),
+               Output('visualize-expression-graph', 'figure')
                ],
               [Input('launch-training', 'n_clicks'),
                Input('interval-during-training', 'n_intervals'),
                Input({'type': 'validate', 'index': ALL}, 'n_clicks'),
                Input({'type': 'delete_pair', 'index': ALL}, 'n_clicks'),
                Input("datatable", "selected_row_ids"),
-               Input('new_training', "n_clicks")],
+               Input('new_training', "n_clicks"),
+               Input('visualize-expression-dropdown', "value"),
+               ],
               [State('local-gui-data-logdir', "data"),
                State('local-current-step', "data"),
                State('local-pid', "data"),
@@ -167,7 +198,8 @@ app.layout = html.Div([
                State('frequency-input', "value")
                ]
               )
-def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pair_n_clicks, selected_row_indices, new,
+def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pair_n_clicks, selected_row_indices,
+                     new_clicks, visu_dropdown_value,
                      logdir, current_step, pid, pair_indexes, grammar, local_expression_data, table_data,
                      children, suggestion_box, pref_classes, continuer_box, right_pref, left_pref, both_pref, none_pref,
                      top_idss, middle_idss, low_idss, dataset_value, grammar_value, frequency_value):
@@ -176,6 +208,8 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
     hidden_waiter = dash.no_update
     hidden_iteration_data = dash.no_update
     interval_disabled = dash.no_update
+    visu_dropdown = dash.no_update
+    visu_graph = dash.no_update
 
     top_ids = []
     middle_ids = []
@@ -204,7 +238,7 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
 
         return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
                pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
-               continuer_box, selected_row_indices
+               continuer_box, selected_row_indices, visu_dropdown, visu_graph
 
     ctx = dash.callback_context
     if ctx.triggered[0]['prop_id'] == "new_training.n_clicks":
@@ -229,7 +263,7 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
         logdir = None
         return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
                pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes,\
-               continuer_box, selected_row_indices
+               continuer_box, selected_row_indices, visu_dropdown, visu_graph
 
     elif ctx.triggered[0]['prop_id'] == "launch-training.n_clicks":
         interval_disabled, hidden_during, hidden_before, logdir, pid = callback_launch(dataset_value, grammar_value, frequency_value)
@@ -247,8 +281,8 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
         pair_id_to_drop = json.loads(ctx.triggered[0]['prop_id'].replace('.n_clicks', ''))['index']
         pair_indexes.pop([str(p) for p in pair_indexes].index(pair_id_to_drop))
         children, continuer_box, grammar, table_data, pair_indexes, \
-        interval_disabled, hidden_during, hidden_before, current_step = pairs_plot_callback(
-            n_intervals, logdir, current_step, pair_indexes, grammar)
+        interval_disabled, hidden_during, hidden_before, current_step, visu_dropdown, visu_graph = pairs_plot_callback(
+            n_intervals, logdir, current_step, pair_indexes, grammar, visu_dropdown_value)
 
     elif "datatable.selected_row_ids" in ctx.triggered[0]['prop_id']:
         new_pair = table_callback(selected_row_indices)
@@ -256,20 +290,20 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
             selected_row_indices = []
             pair_indexes = new_pair + pair_indexes
             children, continuer_box, grammar, table_data, pair_indexes, \
-            interval_disabled, hidden_during, hidden_before, current_step = pairs_plot_callback(
-                n_intervals, logdir, current_step, pair_indexes, grammar)
+            interval_disabled, hidden_during, hidden_before, current_step, visu_dropdown, visu_graph = pairs_plot_callback(
+                n_intervals, logdir, current_step, pair_indexes, grammar, visu_dropdown_value)
     elif (pid is not None) and (pid > 0) and psutil.pid_exists(pid):
         if (not pair_indexes is None) and (len(pair_indexes) == 0):
             pair_indexes = None
         children, continuer_box, grammar, table_data, pair_indexes, \
-        interval_disabled, hidden_during, hidden_before, current_step = pairs_plot_callback(
-            n_intervals, logdir, current_step, pair_indexes, grammar)
+        interval_disabled, hidden_during, hidden_before, current_step, visu_dropdown, visu_graph = pairs_plot_callback(
+            n_intervals, logdir, current_step, pair_indexes, grammar, visu_dropdown_value)
         pref_classes = get_classes(table_data, current_step, top_ids, middle_ids, low_ids)
 
         if not isinstance(grammar, dict):
             return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
            pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes,\
-            continuer_box, selected_row_indices
+            continuer_box, selected_row_indices, visu_dropdown, visu_graph
         expression = grammar['start_symbol']
         current_symbol = grammar['start_symbol']
         queue = []
@@ -282,64 +316,80 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
             local_expression_data = [local_expression_data[-1]]
             expression = local_expression_data[-1]['translation']
             current_symbol = local_expression_data[-1]['current_symbol']
-        suggestion_box = dbc.Alert([
-            dbc.Row(
-                dbc.Col(
-                    html.Div(
-                        html.Div([html.P( "Choose an expression to compare with"),  #"Choisir une expression avec laquelle se comparer"),
-                                  dcc.Dropdown(id={'type': "suggestion-id", 'index': current_step},
-                                               options=[{"label": f"{row['Expression']} (score {row['Reward']})",
-                                                         "value": row['id']} for row in table_data]),
-                                  html.P(" ")], id={'type': "validation-div", 'index': current_step})
-                    )
-                )
-            ),
-            dbc.Row(
-                dbc.Col(
-                    html.Div([html.P("Suggest an expression"), #"Suggestion d'une expression"),
-                              dbc.Alert("Expression: " + expression, color="light",
-                                        id={'type': "expression", 'index': current_step})],
-                             id={'type': "alert-div", 'index': current_step})
-                )
-            ),
-            dbc.Row(
-                dbc.Col(
-                    html.Div([
-                        dcc.Store(id={'type': "local-expression-data", 'index': current_step}, storage_type='memory',
-                                  data=local_expression_data[-1]),
-                        html.Div(
-                            dcc.Dropdown(
-                                id={'type': "select-action", 'index': current_step},
-                                options=[{"label": rule['raw'], "value": i_prod}
-                                         for i_prod, rule in enumerate(grammar['productions_list'])
-                                         if current_symbol in rule["parent_symbol"]
-                                         ]),
-                            id={'type': "dropdown-div", 'index': current_step})
-                    ])
-                )
-            ),
-            dbc.Row([
-                dbc.Col(
-                    dbc.Button("Start a new suggestion", # "Commencer une nouvelle suggestion",
-                               id={'type': 'restart-suggest',
-                                   'index': current_step},
-                               className="d-grid gap-2 col-6 mx-auto",
-                               style={"margin": "1%"})
-                ),
-                dbc.Col(
-                    dbc.Button("Suggestion validation", # "Valider la suggestion",
-                               id={'type': 'suggestion-validation',
-                                   'index': current_step},
-                               color="primary",
-                               className="d-grid gap-2 col-6 mx-auto",
-                               style={"margin": "1%"}, disabled=True)),
-            ]),
-            dbc.Row([
-                dbc.Col([html.Div(id={"type": "validated-suggestion-div", "index": current_step})])
-            ])
-        ], color="secondary")
 
-        if isinstance(children, list) and (len(children) > 1):
+        grammar_content = []
+        for key, prod in grammar['productions_dict'].items():
+            grammar_content+=[html.I(f"{key} :== {' | '.join([pr['raw'] for pr in prod])}")] + [html.Br()]
+
+        grammar_div = dbc.Alert([html.P('Grammar reminder')]+grammar_content, color="secondary")
+
+        suggestion_box = dbc.Row(
+                [dbc.Col(
+                    dbc.Alert([
+                        dbc.Row(
+                            dbc.Col(
+                                html.Div(
+                                    html.Div([html.P( "Choose an expression to compare with"),  #"Choisir une expression avec laquelle se comparer"),
+                                              dcc.Dropdown(id={'type': "suggestion-id", 'index': current_step},
+                                                           options=[{"label": f"{row['Expression']} (score {row['Reward']})",
+                                                                     "value": row['id']} for row in table_data]),
+                                              html.P(" ")], id={'type': "validation-div", 'index': current_step})
+                                )
+                            )
+                        ),
+                        dbc.Row(
+                            dbc.Col(
+                                html.Div([html.P("Suggest an expression"), #"Suggestion d'une expression"),
+                                          dbc.Alert("Start expression: " + expression, color="light",
+                                                    style={'color': "black",
+                                                           "background-color": "white",
+                                                           "border-width": "0px"},
+                                                    id={'type': "expression", 'index': current_step})],
+                                         id={'type': "alert-div", 'index': current_step})
+                            )
+                        ),
+                        dbc.Row(
+                            dbc.Col(
+                                html.Div([
+                                    dcc.Store(id={'type': "local-expression-data", 'index': current_step}, storage_type='memory',
+                                              data=local_expression_data[-1]),
+                                    html.Div(
+                                        dcc.Dropdown(
+                                            id={'type': "select-action", 'index': current_step},
+                                            options=[{"label": rule['raw'], "value": i_prod}
+                                                     for i_prod, rule in enumerate(grammar['productions_list'])
+                                                     if current_symbol in rule["parent_symbol"]
+                                                     ]),
+                                        id={'type': "dropdown-div", 'index': current_step})
+                                ])
+                            )
+                        ),
+                        dbc.Row([
+                            dbc.Col(
+                                dbc.Button("Start a new suggestion", # "Commencer une nouvelle suggestion",
+                                           id={'type': 'restart-suggest',
+                                               'index': current_step},
+                                           className="d-grid gap-2 col-6 mx-auto",
+                                           style={"margin": "1%"})
+                            ),
+                            dbc.Col(
+                                dbc.Button("Suggestion validation", # "Valider la suggestion",
+                                           id={'type': 'suggestion-validation',
+                                               'index': current_step},
+                                           color="primary",
+                                           className="d-grid gap-2 col-6 mx-auto",
+                                           style={"margin": "1%"}, disabled=True)),
+                        ]),
+                        dbc.Row([
+                            dbc.Col([html.Div(id={"type": "validated-suggestion-div", "index": current_step})])
+                        ])
+                    ], color="secondary")
+                ),
+                dbc.Col(grammar_div)]
+        )
+
+
+        if isinstance(children, list) and (len(children) > 0):
             hidden_during = False
             hidden_iteration_data = False
             hidden_waiter = True
@@ -347,11 +397,11 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
         hidden_before = False
         return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
            pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
-               continuer_box, selected_row_indices
+               continuer_box, selected_row_indices, visu_dropdown, visu_graph
 
     return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
            pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
-        continuer_box, selected_row_indices
+        continuer_box, selected_row_indices, visu_dropdown, visu_graph
 
 
 def callback_launch(dataset_value, grammar_value, frequency_value):
@@ -376,10 +426,12 @@ def expression_formating(t):
     return t
 
 
-def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons=None, grammar=None):
+def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons=None, grammar=None,
+                        visu_dropdown_value=None):
+
     if len(os.listdir(gui_data_logdir)) == 0:
         return dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-               dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+               dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     input_pkls = [os.path.join(gui_data_logdir, f) for f in os.listdir(gui_data_logdir)
                        if not "answers" in f]
@@ -387,7 +439,7 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
             if "answers" in f]
 
     if len(input_pkls)-len(answers_pkls) == 0:
-        return waiter, [], grammar, [], [], False, False, True, current_step
+        return waiter, [], grammar, [], [], False, False, True, current_step, dash.no_update, dash.no_update
     else:
         current_step = max([int(f.split('/')[-1].replace(".pkl", "")) for f in input_pkls])
 
@@ -414,7 +466,22 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
                   'Reward': round(rewards[translations.index(t)], 2)}
                  for t in top_expressions]
 
-    children_blocks = [] #[html.H4(f"Iteration n°{current_step}", style={"textAlign":'center'})]
+    if visu_dropdown_value is None:
+        visu_dropdown_value = translations.index(top_expressions[0])
+
+    visu_options = [{"label": f"{expression_formating(t)} (score {round(rewards[translations.index(t)],3)})",
+                     "value": translations.index(t)}
+                    for t in top_expressions]
+    visu_figure = go.Figure(data=[go.Scatter(x=x, y=y_pred[visu_dropdown_value],
+                                             name="y_pred", mode='markers'),
+                                   go.Scatter(x=x, y=y, name="y", mode='markers')],
+                             layout=go.Layout(xaxis_title="Variable x",
+                                              title=expression_formating(translations[visu_dropdown_value]),
+                                              autosize=True,
+                                              margin=go.layout.Margin(l=1, r=1, b=1, t=50)))
+
+
+    children_blocks = [html.H4(f"Iteration n°{current_step}", style={"textAlign":'center'})]
     for i_pair, pair_ids in enumerate(combinaisons):
         id_left, id_right = pair_ids
         pair_ids = str(pair_ids)
@@ -498,7 +565,8 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
                                className="d-grid gap-2 col-6 mx-auto",
                                style={"margin": "1%"})
 
-    return children_blocks, continuer_box, grammar, table_data, combinaisons, True, False, True, current_step
+    return children_blocks, continuer_box, grammar, table_data, combinaisons, True, False, True, current_step, \
+           visu_options, visu_figure
 
 
 @app.callback([Output({'type': "dropdown-div", 'index': MATCH}, "children"),
