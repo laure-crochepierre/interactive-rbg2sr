@@ -70,14 +70,26 @@ app.layout = html.Div([
         dbc.Form([
             dbc.Label('Dataset', html_for="dataset-input"),
             dcc.Dropdown(options=[{"label": 'Symbolic Regression benchmark', 'value': "nguyen4"},
-                                  {"label": 'Power System Use case', 'value': "case14", "disabled":True}],
+                                  {"label": 'Power System Use case', 'value': "case14", "disabled": True}],
                          value="nguyen4",
                          id="dataset-input"),
+            html.Br(),
             dbc.Label('Grammar', html_for="grammar-input"),
-            dcc.Dropdown(options=[{"label": 'grammar with constants', 'value': "with"},
-                                  {"label": 'grammar without constants', 'value': "without"}],
+            dcc.Dropdown(options=[{"label": 'Grammar with constants', 'value': "with"},
+                                  {"label": 'Grammar without constants', 'value': "without"}],
                          value="with",
                          id="grammar-input"),
+            html.Br(),
+            dbc.Label('Interaction Type', html_for="type-input"),
+            dcc.Dropdown(options=[{"label": "From the start", "value": "from_start"},
+                                  {"label": "On plateau", "value": "on_plateau"}],
+                         value="from_start", id="type-input"),
+            html.Br(),
+            dbc.Label('Reuse Preferences ? ', html_for="reuse-input"),
+            dcc.Dropdown(options=[{"label": "Yes", "value": "yes"},
+                                  {"label": "No", "value": "no"}],
+                         value="yes", id="reuse-input"),
+            html.Br(),
             dbc.Label('Interaction Frequency', html_for="frequency-input"),
             dcc.Slider(min=1, max=50, step=1, value=5, tooltip={"placement": "bottom", "always_visible": True},
                        id="frequency-input")
@@ -150,11 +162,11 @@ def open_off_canevas(n_clicks):
 
 
 @app.callback(Output("off-button", "style"),
-             [Input("iteration_data", "hidden")])
-def is_canevas_hidden(hidden):
-    if hidden:
+             [Input("iteration_data", "hidden"),
+              Input("before-training", "hidden")])
+def is_canevas_hidden(hidden_iteration, hidden_before):
+    if (not hidden_before) or hidden_iteration:
         return {"display": "none"}
-
     return {'margin': 30}
 
 
@@ -184,6 +196,8 @@ def is_canevas_hidden(hidden):
                Input("datatable", "selected_row_ids"),
                Input('new_training', "n_clicks"),
                Input('visualize-expression-dropdown', "value"),
+               Input('type-input', "value"),
+               Input('reuse-input', "value"),
                ],
               [State('local-gui-data-logdir', "data"),
                State('local-current-step', "data"),
@@ -209,7 +223,7 @@ def is_canevas_hidden(hidden):
                ]
               )
 def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pair_n_clicks, selected_row_indices,
-                     new_clicks, visu_dropdown_value,
+                     new_clicks, visu_dropdown_value, interaction_type, reuse,
                      logdir, current_step, pid, pair_indexes, grammar, local_expression_data, table_data,
                      children, suggestion_box, pref_classes, continuer_box, right_pref, left_pref, both_pref, none_pref,
                      top_idss, middle_idss, low_idss, dataset_value, grammar_value, frequency_value):
@@ -273,7 +287,10 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
         logdir = None
 
     elif ctx.triggered[0]['prop_id'] == "launch-training.n_clicks":
-        interval_disabled, hidden_during, hidden_before, logdir, pid = callback_launch(dataset_value, grammar_value, frequency_value)
+        interval_disabled, hidden_during, hidden_before, logdir, pid = callback_launch(dataset_value,
+                                                                                       grammar_value,
+                                                                                       frequency_value,
+                                                                                       interaction_type, reuse)
         current_step = 0
         hidden_iteration_data = True
     elif "validate" in ctx.triggered[0]['prop_id']:
@@ -413,11 +430,11 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
         continuer_box, selected_row_indices, visu_dropdown, visu_graph
 
 
-def callback_launch(dataset_value, grammar_value, frequency_value):
+def callback_launch(dataset_value, grammar_value, frequency_value, interaction_type, reuse):
     os.makedirs("../results/interactive_runs", exist_ok=True)
     writer_logdir = f"../results/interactive_runs/{time.time()}"
     proc = subprocess.Popen([f'python app_interactive_algorithm.py {writer_logdir} {dataset_value} '
-                             f'{grammar_value} {frequency_value}'], shell=True)
+                             f'{grammar_value} {frequency_value} {interaction_type} {reuse}'], shell=True)
     print("Training Launched !")
     gui_data_logdir = os.path.join(writer_logdir, 'gui_data')
     os.makedirs(gui_data_logdir, exist_ok=True)
