@@ -1,4 +1,4 @@
-{"folder_path":"/home/crochepierrelau/Documents/Git/interactive-rbg2sr/",
+{"folder_path":"../",
   "algo_kwargs": {
     "batch_size": 1000,
     "entropy_coeff": 0.0005,
