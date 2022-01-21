@@ -40,8 +40,9 @@ metrics = {"MSE": mean_squared_error, "R2": r2_score,
            "Spearman": lambda y, yhat: spearmanr(y, yhat)[0],
            }
 
-waiter = [dbc.Container([dbc.Row(dbc.Col(dbc.Spinner(show_initially=True, color="secondary"), width={"size": 6, "offset": 6})),
-                  dbc.Row(dbc.Col(html.H4("Waiting to receive pairs of expressions to compare"), #"En attente de réception des paires d'expressions à comparer"),
+waiter = [dbc.Container([dbc.Row(dbc.Col(dbc.Spinner(show_initially=True, color="secondary"),
+                                         width={"size": 6, "offset": 6})),
+                         dbc.Row(dbc.Col(html.H4("Waiting to receive expressions to compare"),
                                   width={"size": 6, "offset": 4}))],
     className="p-3 bg-light rounded-3")]
 
@@ -90,7 +91,7 @@ app.layout = html.Div([
     html.Div([dcc.Interval(id="interval-during-training", interval=5*1000, disabled=True),
               html.Div(waiter, id='waiter'),
               html.Div([
-                dbc.Offcanvas(
+                    dbc.Offcanvas(
                             [
                                 dbc.Label("Select an expression", html_for="visualize-expression-dropdown"),
                                 dcc.Dropdown(clearable=False,
@@ -101,7 +102,7 @@ app.layout = html.Div([
                             ],
                             id="offcanvas",
                             title="Visualize Expressions",
-                            is_open=True,
+                            is_open=False,
                             close_button=False,
                     style={'width': '800px'}
                     ),
@@ -146,6 +147,15 @@ def open_off_canevas(n_clicks):
     if ctx.triggered[0]['prop_id'] == ".":
         raise PreventUpdate
     return [True]
+
+
+@app.callback(Output("off-button", "style"),
+             [Input("iteration_data", "hidden")])
+def is_canevas_hidden(hidden):
+    if hidden:
+        return {"display": "none"}
+
+    return {'margin': 30}
 
 
 @app.callback([Output('interval-during-training', 'disabled'),
@@ -261,9 +271,6 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
         selected_row_indices = []
         grammar = None
         logdir = None
-        return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
-               pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes,\
-               continuer_box, selected_row_indices, visu_dropdown, visu_graph
 
     elif ctx.triggered[0]['prop_id'] == "launch-training.n_clicks":
         interval_disabled, hidden_during, hidden_before, logdir, pid = callback_launch(dataset_value, grammar_value, frequency_value)
@@ -274,14 +281,14 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
                        top_ids, middle_ids, low_ids, local_expression_data)
         interval_disabled = False
         hidden_iteration_data = True
-        hidden_waiter = False
+        hidden_during = False
         children = []
         pair_indexes = None
     elif "delete_pair" in ctx.triggered[0]['prop_id']:
         pair_id_to_drop = json.loads(ctx.triggered[0]['prop_id'].replace('.n_clicks', ''))['index']
         pair_indexes.pop([str(p) for p in pair_indexes].index(pair_id_to_drop))
         children, continuer_box, grammar, table_data, pair_indexes, \
-        interval_disabled, hidden_during, hidden_before, current_step, visu_dropdown, visu_graph = pairs_plot_callback(
+        interval_disabled, hidden_iteration_data, hidden_during, current_step, visu_dropdown, visu_graph = pairs_plot_callback(
             n_intervals, logdir, current_step, pair_indexes, grammar, visu_dropdown_value)
 
     elif "datatable.selected_row_ids" in ctx.triggered[0]['prop_id']:
@@ -290,20 +297,20 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
             selected_row_indices = []
             pair_indexes = new_pair + pair_indexes
             children, continuer_box, grammar, table_data, pair_indexes, \
-            interval_disabled, hidden_during, hidden_before, current_step, visu_dropdown, visu_graph = pairs_plot_callback(
+            interval_disabled, hidden_iteration_data, hidden_during, current_step, visu_dropdown, visu_graph = pairs_plot_callback(
                 n_intervals, logdir, current_step, pair_indexes, grammar, visu_dropdown_value)
     elif (pid is not None) and (pid > 0) and psutil.pid_exists(pid):
         if (not pair_indexes is None) and (len(pair_indexes) == 0):
             pair_indexes = None
         children, continuer_box, grammar, table_data, pair_indexes, \
-        interval_disabled, hidden_during, hidden_before, current_step, visu_dropdown, visu_graph = pairs_plot_callback(
+        interval_disabled, hidden_iteration_data, hidden_during, current_step, visu_dropdown, visu_graph = pairs_plot_callback(
             n_intervals, logdir, current_step, pair_indexes, grammar, visu_dropdown_value)
         pref_classes = get_classes(table_data, current_step, top_ids, middle_ids, low_ids)
 
         if not isinstance(grammar, dict):
             return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
-           pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes,\
-            continuer_box, selected_row_indices, visu_dropdown, visu_graph
+                   pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
+                   continuer_box, selected_row_indices, visu_dropdown, visu_graph
         expression = grammar['start_symbol']
         current_symbol = grammar['start_symbol']
         queue = []
@@ -399,6 +406,8 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
            pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
                continuer_box, selected_row_indices, visu_dropdown, visu_graph
 
+    hidden_before = not hidden_during
+    hidden_waiter = not hidden_iteration_data
     return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
            pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
         continuer_box, selected_row_indices, visu_dropdown, visu_graph
@@ -428,6 +437,28 @@ def expression_formating(t):
 
 def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons=None, grammar=None,
                         visu_dropdown_value=None):
+    """
+
+    :param n_intervals:
+    :param gui_data_logdir:
+    :param current_step:
+    :param combinaisons:
+    :param grammar:
+    :param visu_dropdown_value:
+    :return:
+    - children
+    - continuer_box
+    - grammar
+    - table_data
+    - pair_indexes
+    - interval_disabled
+    - hidden_iteration_data
+    - hidden_during
+    - current_step
+    - visu_dropdown
+    - visu_graph
+
+    """
 
     if len(os.listdir(gui_data_logdir)) == 0:
         return dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
@@ -439,7 +470,7 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
             if "answers" in f]
 
     if len(input_pkls)-len(answers_pkls) == 0:
-        return waiter, [], grammar, [], [], False, False, True, current_step, dash.no_update, dash.no_update
+        return [], [], grammar, [], [], False, True, False, current_step, dash.no_update, dash.no_update
     else:
         current_step = max([int(f.split('/')[-1].replace(".pkl", "")) for f in input_pkls])
 
@@ -565,7 +596,7 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
                                className="d-grid gap-2 col-6 mx-auto",
                                style={"margin": "1%"})
 
-    return children_blocks, continuer_box, grammar, table_data, combinaisons, True, False, True, current_step, \
+    return children_blocks, continuer_box, grammar, table_data, combinaisons, True, False, False, current_step, \
            visu_options, visu_figure
 
 
@@ -884,8 +915,7 @@ def pairs_by_classes(value_top, value_middle, value_low, top_regex_n_clicks, mid
 
     return options, options, options, top_ids, middle_ids, low_ids, value_top, value_middle, value_low
 
+
 if __name__ == "__main__":
     app.run_server(host="127.0.0.1", port=8050, debug=True)
-    server = app.server
-
 
