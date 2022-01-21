@@ -204,12 +204,14 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
     @torch.inference_mode()
     def sample_episodes(self, i_epoch=0):
         if (i_epoch % self.user.interaction_frequency != 0) & self.user.reuse & (self.past_trajectories is not None):
-            print(f'Epoch n° {i_epoch}: reuse past trajectories')
+            if self.verbose:
+                print(f'Epoch n° {i_epoch}: reuse past trajectories')
             suggested_trajectories = [{"action_ids": t} for t in self.past_trajectories]
             transitions, final_rewards, _ = self.simulate_trajectories(suggested_trajectories)
             return transitions, final_rewards
 
-        print(f'Epoch n° {i_epoch}: sample new trajectories')
+        if self.verbose:
+            print(f'Epoch n° {i_epoch}: sample new trajectories')
         batch = None
         final_rewards = None
         self.past_trajectories = [[] for _ in range(self.batch_size)]

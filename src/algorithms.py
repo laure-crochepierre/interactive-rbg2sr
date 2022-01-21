@@ -291,12 +291,13 @@ class ReinforceAlgorithm(BaseAlgorithm):
         torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 1)
         self.optimizer.step()
 
-        self.writer.add_scalar('Losses/Loss', loss.detach().numpy(), i_epoch)
-        self.writer.add_scalar('Losses/Entropy Loss', entropy.mean().detach().numpy(), i_epoch)
-        self.writer.add_scalar('Losses/Policy Loss', policy_loss.mean().detach().numpy(), i_epoch)
-        if self.policy.autoencoder:
-            self.writer.add_scalar('Losses/Autoencoder Loss', ae_loss.detach().numpy(), i_epoch)
-            self.writer.add_scalar('Losses/Weight a', self.policy.ae_coeff_loss.detach().numpy(), i_epoch)
+        if self.verbose:
+            self.writer.add_scalar('Losses/Loss', loss.detach().numpy(), i_epoch)
+            self.writer.add_scalar('Losses/Entropy Loss', entropy.mean().detach().numpy(), i_epoch)
+            self.writer.add_scalar('Losses/Policy Loss', policy_loss.mean().detach().numpy(), i_epoch)
+            if self.policy.autoencoder:
+                self.writer.add_scalar('Losses/Autoencoder Loss', ae_loss.detach().numpy(), i_epoch)
+                self.writer.add_scalar('Losses/Weight a', self.policy.ae_coeff_loss.detach().numpy(), i_epoch)
 
     def get_bonus(self, total_rewards, total_log_probs, num_samples=0):
         return 0
