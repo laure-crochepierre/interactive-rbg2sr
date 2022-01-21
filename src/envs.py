@@ -29,6 +29,7 @@ from utils.constraints import Constraints
 def base_metric(y, yhat):
     return 1 / (1 + ((y-yhat)**2).mean())
 
+
 class BatchSymbolicRegressionEnv(gym.Env):
     def __init__(self, grammar_file_path,
                  start_symbol,
@@ -52,7 +53,8 @@ class BatchSymbolicRegressionEnv(gym.Env):
                  observe_mask=True,
                  observe_depth=True,
                  outlier_heuristic=False,
-                 constant_optimizer=True
+                 constant_optimizer=True,
+                 use_np=False,
                  ):
 
         # MDP related parameters
@@ -72,7 +74,7 @@ class BatchSymbolicRegressionEnv(gym.Env):
         self.outlier_heuristic = outlier_heuristic
 
         self.target = target  # target variable to predict
-        self.use_np = False
+        self.use_np = use_np
         # Load datasets
         self.X_train, self.X_test = None, None
         if test_data_path is not None:
@@ -336,6 +338,7 @@ class BatchSymbolicRegressionEnv(gym.Env):
                 if np.isnan(reward):
                     reward = 0
             except Exception as e:
+                print(e)
                 reward = 0
         return reward
 

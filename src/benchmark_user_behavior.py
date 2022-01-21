@@ -41,7 +41,8 @@ def launch_training(params):
                                                            params['env_kwargs']["train_data_path"])
     params['env_kwargs']["test_data_path"] = os.path.join(params['folder_path'],
                                                           params['env_kwargs']["test_data_path"])
-    params["n_epochs"] = 1000
+    params['env_kwargs']["use_np"] = True
+    params["n_epochs"] = 3
     params['algo_kwargs']['risk_eps'] = 0.05
     model = PreferenceReinforceGUI(env_class=BatchSymbolicRegressionEnv,
                                    writer_logdir=f"{writer_logdir}/{time.time()}",
@@ -74,27 +75,28 @@ def launch_training(params):
             scores += [e]
     scores += [model.logger["best_expression"], duree]
     pd.DataFrame(data=[scores],
-                 columns=columns).to_csv(f"{writer_logdir}/{time.time()}.csv")
+                 columns=columns).to_csv(f"{writer_logdir}/{time.time()}.csv".replace('/', '_')
+                                         .replace('results_', "results/"))
     return scores
 
 
 if __name__ == "__main__":
-    nb_tests = 10
+    nb_tests = 2
     scores = []
 
     combinaitions = []
     for i in range(nb_tests):
-        for reuse in [True, False]:
+        for reuse in [True]:
             for interaction_frequency in [2, 5, 10, 15, 20]:
                 user_params = {'reuse': reuse,
                                'interaction_frequency': interaction_frequency}
-                for user in [SelectRewardWithProbUser(0.8, **user_params), SelectRewardWithProbUser(0.6, **user_params),
-                             SelectRewardWithProbUser(0.4, **user_params), SelectRewardWithProbUser(0.2, **user_params),
-                             SelectRandomRewardUser(**user_params), SelectBestRewardUser(**user_params)]:
-                    logdir = f"../results/user_benchmark/reuse_{reuse}/{user.type}/freq_{interaction_frequency}/{i}"
+                for user in [SelectRewardWithProbUser(0.8, **user_params), SelectRewardWithProbUser(0.5, **user_params),
+                             SelectRewardWithProbUser(0.2, **user_params), SelectBestRewardUser(**user_params)]:
+                    logdir = f"../results/test_user_benchmark/reuse_{reuse}/{user.type}/freq_{interaction_frequency}/{i}"
                     combinaitions.append([i, reuse, interaction_frequency, user, logdir])
 
-    with Pool(10) as p:
+    print(len(combinaitions))
+    with Pool(4) as p:
             scores = p.map(launch_training, combinaitions)
 
     pd.DataFrame(data=scores,

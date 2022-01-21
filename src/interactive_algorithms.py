@@ -177,7 +177,7 @@ class DemonstrationReinforceAlgorithm(ReinforceAlgorithm):
 
 
 class PreferenceReinforceGUI(ReinforceAlgorithm):
-    def __init__(self, user=SelectBestRewardUser(),  x_label="x", **kwargs):
+    def __init__(self, user=SelectBestRewardUser(),  x_label="x", interaction_type="from_start", **kwargs):
         super(PreferenceReinforceGUI, self).__init__(**kwargs)
         self.gui_data_path = os.path.join(self.writer.log_dir, 'gui_data')
         os.makedirs(self.gui_data_path, exist_ok=True)
@@ -190,6 +190,8 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         self.past_trajectories = None
 
         # Parameters used to combine REINFORCE algorithm with interactivity every n steps
+        self.interaction_type = interaction_type
+
         self.n_reinforce_step = 0
         self.remaining_reinforce_iteration = self.n_reinforce_step
         self.apply_reinforce = False

@@ -16,7 +16,9 @@ from user_behavior import RealUser
 
 
 def launch_training(writer_logdir="./test", dataset_value="nguyen4", grammar_with_without_value="with",
-                    frequency_value=5):
+                    frequency_value=5, interaction_type='from_start', reuse="yes"):
+
+    reuse = reuse == "yes"
     # model definition
     params = json.load(open("params.json", 'rb'))
     params['dataset'] = dataset_value
@@ -33,8 +35,9 @@ def launch_training(writer_logdir="./test", dataset_value="nguyen4", grammar_wit
                                                            params['env_kwargs']["train_data_path"])
     params['env_kwargs']["test_data_path"] = os.path.join(params['folder_path'],
                                                           params['env_kwargs']["test_data_path"])
+    params['env_kwargs']["use_np"] = True
 
-    user_kwargs = {'reuse': True,
+    user_kwargs = {'reuse': reuse,
                    'interaction_frequency': frequency_value}
     params['algo_kwargs']['risk_eps'] /= user_kwargs['interaction_frequency']
 
@@ -45,6 +48,7 @@ def launch_training(writer_logdir="./test", dataset_value="nguyen4", grammar_wit
                                    policy_kwargs=params['policy_kwargs'],
                                    dataset=params['dataset'],
                                    user=RealUser(gui_data_path=writer_logdir, **user_kwargs),
+                                   x_label=params[dataset_value]['x_label'],
                                    debug=1, **params['algo_kwargs'])
     model.train(params['n_epochs'])
 
