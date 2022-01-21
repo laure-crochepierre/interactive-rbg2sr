@@ -338,7 +338,6 @@ class BatchSymbolicRegressionEnv(gym.Env):
                 if np.isnan(reward):
                     reward = 0
             except Exception as e:
-                print(e)
                 reward = 0
         return reward
 
