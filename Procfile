@@ -1,1 +1,1 @@
-web: sh setup.sh && gunicorn src.app:app --preload
+web: sh setup.sh && gunicorn src.app:server --preload
