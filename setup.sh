@@ -1,0 +1,1 @@
+export LD_LIBRARY_PATH=/app/.heroku/vendor/lib/atlas-base/atlas:/app/.heroku/vendor/lib/atlas-base:/app/.heroku/vendor/lib/
