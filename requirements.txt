@@ -17,7 +17,6 @@ pandapower==2.4.0
 pandas==1.1.4
 Pillow==8.2.0
 plotly==5.4.0
-psutils
 scikit-learn
 sklearn==0.0
 sympy==1.8
