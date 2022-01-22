@@ -3,7 +3,7 @@ python3-setuptools
 python3-pip
 python3-numpy
 python3-scipy
-#libatlas-dev
+python3-dev
 #libatlas3gf-base
 
 # or include links to specific .deb files
