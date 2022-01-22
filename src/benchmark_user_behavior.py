@@ -45,7 +45,7 @@ def launch_training(params):
     params['env_kwargs']["use_np"] = True
     params["n_epochs"] = 1000
     params['algo_kwargs']['risk_eps'] = 0.05
-    params['algo_kwargs']['verbose'] = 1
+    params['algo_kwargs']['verbose'] = 0
 
     model = PreferenceReinforceGUI(env_class=BatchSymbolicRegressionEnv,
                                    writer_logdir=f"{writer_logdir}/{time.time()}",
@@ -68,7 +68,10 @@ def launch_training(params):
     metrics = [mean_squared_error, mean_absolute_error, r2_score, nrmse]
 
     f = eval(f'lambda x : {model.logger["best_expression"]}')
-    y_pred = f(model.env.X_test)
+    if model.env.use_np:
+        y_pred = f(model.env.X_test.values)
+    else:
+        y_pred = f(model.env.X_test)
 
     scores = [user.type, reuse, interaction_frequency]
     for m in metrics:
@@ -77,9 +80,9 @@ def launch_training(params):
         except Exception as e:
             scores += [e]
     scores += [model.logger["best_expression"], duree]
+    print(scores, flush=True)
     pd.DataFrame(data=[scores],
-                 columns=columns).to_csv(f"{writer_logdir}/run_final_res_{time.time()}.csv".replace('/', '_')
-                                         .replace('results_', "results/"))
+                 columns=columns).to_csv(f"{writer_logdir}/run_final_res_{time.time()}.csv")
     return scores
 
 
@@ -95,8 +98,9 @@ if __name__ == "__main__":
                                'interaction_frequency': interaction_frequency}
                 for user in [SelectRewardWithProbUser(0.8, **user_params), SelectRewardWithProbUser(0.5, **user_params),
                              SelectRewardWithProbUser(0.2, **user_params), SelectBestRewardUser(**user_params)]:
-                    logdir = f"../results/user_benchmark_2/reuse_{reuse}/{user.type}/freq_{interaction_frequency}/{i}"
+                    logdir = f"../results/user_benchmark_2/reuse_{reuse}_{user.type}_freq_{interaction_frequency}_{i}"
                     combinaitions.append([i, reuse, interaction_frequency, user, logdir])
+    print("Nb combinaisons", len(combinaitions), flush=True)
 
     with Pool(10) as p:
             scores = p.map(launch_training, combinaitions)
