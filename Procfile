@@ -1,1 +1,1 @@
-web: sh setup.sh && python3 src/app.py
+web: sh setup.sh && gunicorn src.app:app --preload

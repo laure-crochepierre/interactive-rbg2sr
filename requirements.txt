@@ -10,6 +10,7 @@ dash-table==5.0.0
 graphviz==0.18
 Grid2Op==1.6.3
 gym==0.18.3
+gunicorn
 matplotlib==3.4.2
 matplotlib-inline==0.1.2
 numba==0.53.1
