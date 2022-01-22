@@ -87,7 +87,7 @@ def launch_training(params):
 
 
 if __name__ == "__main__":
-    nb_tests = 2
+    nb_tests = 10
     scores = []
 
     combinaitions = []
