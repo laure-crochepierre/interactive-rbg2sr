@@ -88,17 +88,19 @@ class DemonstrationReinforceAlgorithm(ReinforceAlgorithm):
                 continue
 
             batch = transitions
-            if self.verbose:
-                batch_max = final_rewards.max()
-                if batch_max > self.logger['best_reward']:
-                    i_best_reward = np.argmax(final_rewards)
-                    self.logger.update({'best_expression': self.env.translations[i_best_reward],
-                                        "best_reward": batch_max,
-                                        "i_best_epoch": i_epoch})
+
+            batch_max = final_rewards.max()
+            if batch_max > self.logger['best_reward']:
+                i_best_reward = np.argmax(final_rewards)
+                self.logger.update({'best_expression': self.env.translations[i_best_reward],
+                                    "best_reward": batch_max,
+                                    "i_best_epoch": i_epoch})
+                if self.verbose:
                     print(f'Found {self.logger["best_expression"]} at epoch {self.logger["i_best_epoch"]} '
                           f'with reward {self.logger["best_reward"]}'
-                          f'horizon {horizon[i_best_reward]}', flush=True)
+                          f'horizon {sum(self.env.done[i_best_reward])}', flush=True)
 
+            if self.verbose:
                 # Print batch stats
                 self.writer.add_scalar('Batch/Mean', final_rewards.mean(), i_epoch)
                 self.writer.add_scalar('Batch/Std', final_rewards.std(), i_epoch)
@@ -266,17 +268,19 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                 continue
 
             batch = transitions
-            if self.verbose:
-                batch_max = final_rewards.max()
-                if batch_max > self.logger['best_reward']:
-                    i_best_reward = np.argmax(final_rewards)
-                    self.logger.update({'best_expression': self.env.translations[i_best_reward],
-                                        "best_reward": batch_max,
-                                        "i_best_epoch": i_epoch})
+
+            batch_max = final_rewards.max()
+            if batch_max > self.logger['best_reward']:
+                i_best_reward = np.argmax(final_rewards)
+                self.logger.update({'best_expression': self.env.translations[i_best_reward],
+                                    "best_reward": batch_max,
+                                    "i_best_epoch": i_epoch})
+                if self.verbose:
                     print(f'Found {self.logger["best_expression"]} at epoch {self.logger["i_best_epoch"]} '
                           f'with reward {self.logger["best_reward"]}'
-                          f'horizon {horizon[i_best_reward]}', flush=True)
+                          f'horizon {sum(self.env.done[i_best_reward])}', flush=True)
 
+            if self.verbose:
                 # Print batch stats
                 self.writer.add_scalar('Batch/Mean', final_rewards.mean(), i_epoch)
                 self.writer.add_scalar('Batch/Std', final_rewards.std(), i_epoch)
