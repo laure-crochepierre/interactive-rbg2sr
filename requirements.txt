@@ -21,8 +21,7 @@ scikit-learn
 sklearn==0.0
 sympy==1.8
 tabulate==0.8.9
-torch==1.8.1+cpu
-torchvision==0.9.1+cpu
+torch==1.8.1+cpu torchvision==0.9.1+cpu torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
 tqdm==4.62.0
 virtualenv==20.3.1
 whitenoise==5.0.1
