@@ -1,1 +1,1 @@
-web: sh setup.sh && gunicorn src.app:server --preload
+web: sh setup.sh && which python3 && python3.8 src/app.py
