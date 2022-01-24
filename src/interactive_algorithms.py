@@ -194,8 +194,6 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         # Parameters used to combine REINFORCE algorithm with interactivity every n steps
         self.interaction_type = interaction_type
 
-        self.n_reinforce_step = self.user.interaction_frequency
-        self.remaining_reinforce_iteration = self.n_reinforce_step
         self.apply_reinforce = not self.user.reuse
         self.x_label = x_label
 
@@ -302,14 +300,14 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         return batch, final_rewards
 
     def optimize_model(self, batch, final_rewards, i_epoch):
-        if self.apply_reinforce & (self.remaining_reinforce_iteration <= 0):
-            print('Use Reinforce')
+        if (not self.user.reuse) & (i_epoch % self.user.interaction_frequency != 0):
+            if self.verbose:
+                print('Use Reinforce')
             super(PreferenceReinforceGUI, self).optimize_model(batch, final_rewards, i_epoch)
-            self.remaining_reinforce_iteration -= 1
-
         else:
+            if self.verbose:
+                print('Use preferences')
             self.optimize_model_with_preference(batch, final_rewards, i_epoch)
-            self.remaining_reinforce_iteration = self.n_reinforce_step
 
     def optimize_model_with_preference(self, batch, final_rewards, i_epoch):
         top_epsilon_quantile = np.quantile(final_rewards, 1 - self.risk_eps)
