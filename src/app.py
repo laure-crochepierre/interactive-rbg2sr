@@ -940,6 +940,7 @@ def pairs_by_classes(value_top, value_middle, value_low, top_regex_n_clicks, mid
 
 def run_server(port=8050, debug=True):
     app.run_server(port=port, debug=debug)
+    server = app.server
 
 
 if __name__ == "__main__":
