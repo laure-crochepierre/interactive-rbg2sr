@@ -7,8 +7,6 @@
 # This file is part of the interactive-RBG2SR an interactive approach to reinforcement based grammar guided symbolic regression
 
 import os
-import sys
-import pickle
 import time
 import random
 import numpy as np

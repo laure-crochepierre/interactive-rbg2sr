@@ -8,9 +8,6 @@
 
 import time
 import numpy as np
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -361,29 +358,6 @@ class ActorCriticAlgorithm(BaseAlgorithm):
                 state = next_state
                 h_in = torch.Tensor(h_out)
                 c_in = torch.Tensor(c_out)
-
-                if self.debug == 3:
-                    df = pd.DataFrame()
-                    df.loc[:, '<action>'] = [self.env.grammar.productions_list[a]['raw'] for a in action]
-                    df.loc[:, 'probs'] = np.exp(log_prob)
-                    df.sort_values('<action>', inplace=True)
-
-                    f, ax = plt.subplots(figsize=(7, 6))
-                    sns.boxplot(x="probs", y="<action>", data=df,
-                                whis=[0, 100], width=.6, palette="vlag")
-
-                    sns.stripplot(x="probs", y="<action>", data=df,
-                                  size=4, color=".3", linewidth=0)
-
-                    # Tweak the visual presentation
-                    ax.xaxis.grid(True)
-                    ax.set(ylabel="")
-                    plt.xticks(rotation=45)
-                    plt.yticks(rotation=45)
-                    #plt.yticks([prod['raw'] for prod in self.env.grammar.productions_list])
-                    sns.despine(trim=True, left=True)
-
-                    self.writer.add_figure(f"Histogram step {t}", figure=f, global_step=i_epoch)
 
                 if done.sum() == self.batch_size:
                     break
