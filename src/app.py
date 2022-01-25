@@ -47,7 +47,10 @@ waiter = [dbc.Container([dbc.Row(dbc.Col(dbc.Spinner(show_initially=True, color=
     className="p-3 bg-light rounded-3")]
 
 # Launch app
-app = dash.Dash('ipref', external_stylesheets=[dbc.themes.LUMEN, FONT_AWESOME])   # replaces dash.Dash
+app_name = __name__
+if app_name == "__main__":
+    app_name = "interactive_preference_app"
+app = dash.Dash(app_name, external_stylesheets=[dbc.themes.LUMEN, FONT_AWESOME])
 app.layout = html.Div([
     dbc.Row([dbc.Col(dbc.Button("Visualize expressions",
                             id="off-button",
@@ -83,9 +86,10 @@ app.layout = html.Div([
             dbc.Label('Interaction Type', html_for="type-input"),
             dcc.Dropdown(options=[{"label": "From the start", "value": "from_start"},
                                   {"label": "On plateau", "value": "on_plateau"}],
-                         value="from_start", id="type-input"),
+                         value="from_start", id="type-input",
+                         disabled=True),
             html.Br(),
-            dbc.Label('Reuse Preferences ? ', html_for="reuse-input"),
+            dbc.Label('Reuse Preferences between interactive iterations ? ', html_for="reuse-input"),
             dcc.Dropdown(options=[{"label": "Yes", "value": "yes"},
                                   {"label": "No", "value": "no"}],
                          value="yes", id="reuse-input"),
@@ -447,7 +451,7 @@ def expression_formating(t):
 
     t = t.replace('np.', '')
     for i in range(10):
-        t = t.replace(f'x[:,{i}]', f"x{i}")
+        t = t.replace(f'x[:,{i}]', f"x{i}").replace(f'x[:, {i}]', f"x{i}")
     t = parse_expr(t).__repr__()
     return t
 
@@ -506,25 +510,26 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
         grammar = pairs_data['grammar']
 
     translations = [t.replace(']]', ']').replace('x.columns[', ':,') for t in translations]
+    translations = [expression_formating(t) for t in translations]
     top_expressions = sorted(list(set([translations[i] for i in top_indices])),
                                   key=lambda t: rewards[translations.index(t)], reverse=True)
 
     table_data = [{'id': translations.index(t),
-                   'Expression': expression_formating(t).replace('*', ' * '),
+                   'Expression': t,
                   'Reward': round(rewards[translations.index(t)], 2)}
                  for t in top_expressions]
 
     if visu_dropdown_value is None:
         visu_dropdown_value = translations.index(top_expressions[0])
 
-    visu_options = [{"label": f"{expression_formating(t)} (score {round(rewards[translations.index(t)],3)})",
+    visu_options = [{"label": f"{t} (score {round(rewards[translations.index(t)],3)})",
                      "value": translations.index(t)}
                     for t in top_expressions]
     visu_figure = go.Figure(data=[go.Scatter(x=x, y=y_pred[visu_dropdown_value],
                                              name="y_pred", mode='markers'),
                                    go.Scatter(x=x, y=y, name="y", mode='markers')],
                              layout=go.Layout(xaxis_title="Variable x",
-                                              title=expression_formating(translations[visu_dropdown_value]),
+                                              title=translations[visu_dropdown_value],
                                               autosize=True,
                                               margin=go.layout.Margin(l=1, r=1, b=1, t=50)))
 
@@ -534,8 +539,8 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
         id_left, id_right = pair_ids
         pair_ids = str(pair_ids)
         r_left, r_right = round(rewards[id_left], 3), round(rewards[id_right], 3)
-        t_left = expression_formating(translations[id_left])
-        t_right = expression_formating(translations[id_right])
+        t_left = translations[id_left]
+        t_right = translations[id_right]
 
         left_fig = go.Figure(data=[go.Scatter(x=x, y=y_pred[id_left], name="y_pred", mode='markers'),
                                    go.Scatter(x=x, y=y, name="y", mode='markers')],
@@ -751,7 +756,7 @@ def table_callback(selected_row_indices):
     if len(selected_row_indices) == 2:
         return [selected_row_indices]
     else:
-        return None
+        raise PreventUpdate
 
 
 def get_classes(table_data, current_step, top_ids, middle_ids, low_ids):
@@ -933,6 +938,11 @@ def pairs_by_classes(value_top, value_middle, value_low, top_regex_n_clicks, mid
     return options, options, options, top_ids, middle_ids, low_ids, value_top, value_middle, value_low
 
 
+def run_server(port=8050, debug=True):
+    app.run_server(port=port, debug=debug)
+
+
 if __name__ == "__main__":
-    app.run_server(port=8050, debug=True)
+    run_server()
+
 

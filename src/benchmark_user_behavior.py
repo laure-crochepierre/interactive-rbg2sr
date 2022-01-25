@@ -43,7 +43,9 @@ def launch_training(params):
     params['env_kwargs']["test_data_path"] = os.path.join(params['folder_path'],
                                                           params['env_kwargs']["test_data_path"])
     params['env_kwargs']["use_np"] = True
+
     params["n_epochs"] = 1000
+
     params['algo_kwargs']['risk_eps'] = 0.05
     params['algo_kwargs']['verbose'] = 0
 
@@ -92,18 +94,18 @@ if __name__ == "__main__":
 
     combinaitions = []
     for i in range(nb_tests):
-        for reuse in [True]:
-            for interaction_frequency in [2, 5, 10, 15, 20]:
+        for reuse in [False]:
+            for interaction_frequency in [1, 2, 5, 10, 15, 20]:
                 user_params = {'reuse': reuse,
                                'interaction_frequency': interaction_frequency}
                 for user in [SelectRewardWithProbUser(0.8, **user_params), SelectRewardWithProbUser(0.5, **user_params),
                              SelectRewardWithProbUser(0.2, **user_params), SelectBestRewardUser(**user_params)]:
-                    logdir = f"../results/user_benchmark_2/reuse_{reuse}_{user.type}_freq_{interaction_frequency}_{i}"
+                    logdir = f"../results/benchmark_user_behavior_no_reuse/reuse_{reuse}_{user.type}_freq_{interaction_frequency}_{i}"
                     combinaitions.append([i, reuse, interaction_frequency, user, logdir])
     print("Nb combinaisons", len(combinaitions), flush=True)
 
-    with Pool(10) as p:
+    with Pool(6) as p:
             scores = p.map(launch_training, combinaitions)
 
     pd.DataFrame(data=scores,
-                 columns=columns).to_csv(f"../results/user_benchmark_2_{time.time()}.csv")
+                 columns=columns).to_csv(f"../results/benchmark_user_behavior_no_reuse_{time.time()}.csv")

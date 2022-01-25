@@ -41,7 +41,7 @@ class RealUser(User):
         self.rules = None
 
     def select_preference(self, gui_infos, i_epoch):
-        if i_epoch % self.interaction_frequency == 0:
+        if (not self.reuse) or (i_epoch % self.interaction_frequency == 0):
             pickle.dump(gui_infos, open(os.path.join(self.gui_data_path, f"{i_epoch}.pkl"), 'wb'))
             while not os.path.exists(os.path.join(self.gui_data_path, f"{i_epoch}_answers.pkl")):
                 time.sleep(2)
@@ -59,7 +59,7 @@ class SelectBestRewardUser(User):
         self.type = "best"
 
     def select_preference(self, gui_infos, i_epoch):
-        if i_epoch % self.interaction_frequency == 0:
+        if (not self.reuse) or (i_epoch % self.interaction_frequency == 0):
             simulated_answers = copy.deepcopy(self.default_answer)
             simulated_answers['pairs']['ids'] = gui_infos['combinaisons']
 
@@ -77,7 +77,7 @@ class SelectRandomRewardUser(User):
         self.type = "random"
 
     def select_preference(self, gui_infos, i_epoch):
-        if i_epoch % self.interaction_frequency == 0:
+        if (not self.reuse) or (i_epoch % self.interaction_frequency == 0):
             simulated_answers = copy.deepcopy(self.default_answer)
             simulated_answers['pairs']['ids'] = gui_infos['combinaisons']
 
@@ -96,7 +96,7 @@ class SelectRewardWithProbUser(User):
         self.type = f"random_prob_{prob}"
 
     def select_preference(self, gui_infos, i_epoch):
-        if i_epoch % self.interaction_frequency == 0:
+        if (not self.reuse) or (i_epoch % self.interaction_frequency == 0):
             simulated_answers = copy.deepcopy(self.default_answer)
             simulated_answers['pairs']['ids'] = gui_infos['combinaisons']
 
