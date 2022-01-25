@@ -51,6 +51,8 @@ app_name = __name__
 if app_name == "__main__":
     app_name = "interactive_preference_app"
 app = dash.Dash(app_name, external_stylesheets=[dbc.themes.LUMEN, FONT_AWESOME])
+server = app.server
+
 app.layout = html.Div([
     dbc.Row([dbc.Col(dbc.Button("Visualize expressions",
                             id="off-button",
@@ -940,10 +942,10 @@ def pairs_by_classes(value_top, value_middle, value_low, top_regex_n_clicks, mid
 
 def run_server(port=8050, debug=True):
     app.run_server(port=port, debug=debug)
-    server = app.server
 
 
 if __name__ == "__main__":
     run_server()
+
 
 
