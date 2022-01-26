@@ -19,7 +19,11 @@ def launch_training(writer_logdir="./test", dataset_value="nguyen4", grammar_wit
                     frequency_value=5, interaction_type='from_start', reuse="yes"):
     reuse = reuse == "yes"
     # model definition
-    params = json.load(open("params.json", 'rb'))
+    try:
+        params = json.load(open("params.json", 'rb'))
+    except:
+        params = json.load(open("/src/params.json", 'rb'))
+
     params['dataset'] = dataset_value
     params['env_kwargs']["grammar_file_path"] = params[dataset_value]["grammar_file_path"]
     params['env_kwargs']["train_data_path"] = params[dataset_value]["train_data_path"]
