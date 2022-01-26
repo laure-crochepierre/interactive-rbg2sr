@@ -17,11 +17,10 @@ from scipy import optimize
 from numba import jit, float32
 from io import BytesIO
 
-from sklearn.metrics import mean_squared_error, mean_absolute_error
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-from sklearn.linear_model import LinearRegression, Lasso
+from sklearn.linear_model import Lasso
 
 import gym
 import gym.spaces as spaces

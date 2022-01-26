@@ -9,9 +9,11 @@
 import os
 import json
 import time
-import torch
-torch.autograd.set_detect_anomaly(True)
-torch.set_num_threads(1)
+from torch.autograd import set_detect_anomaly
+set_detect_anomaly(True)
+from torch import set_num_threads
+set_num_threads(1)
+from torch.random import manual_seed as torch_manual_seed
 
 import numpy as np
 import pandas as pd
@@ -32,7 +34,7 @@ def launch_training(params):
     print(i, writer_logdir, flush=True)
 
     np.random.seed(i)
-    torch.random.manual_seed(i)
+    torch_manual_seed(i)
 
     # model definition
     params = json.load(open("params.json", 'rb'))

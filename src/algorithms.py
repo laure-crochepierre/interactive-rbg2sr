@@ -14,11 +14,28 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-import torch
-from torch import nn
-from torch.utils.tensorboard import SummaryWriter
+from torch.autograd import set_detect_anomaly as torch_autograd_set_detect_anomaly
+torch_autograd_set_detect_anomaly(True)
 
-torch.autograd.set_detect_anomaly(True)
+from torch import inference_mode as torch_inference_mode
+from torch import ones as torch_ones
+from torch import zeros as torch_zeros
+from torch import Tensor as torch_Tensor
+from torch import BoolTensor as torch_BoolTensor
+from torch import vstack as torch_vstack
+from torch import float32 as torch_float32
+from torch import randint as torch_randint
+from torch import gather as torch_gather
+from torch import mul as torch_mul
+from torch.nn.utils import clip_grad_norm_ as torch_nn_utils_clip_grad_norm_
+from torch.utils.tensorboard import SummaryWriter
+from torch.optim import Adam
+
+from torch.nn import Linear as nn_Linear
+from torch.nn import Conv1d as nn_Conv1d
+from torch.nn import init as nn_init
+from torch.nn import LSTM as nn_LSTM
+from torch.nn import MSELoss as nn_MSELoss
 
 from collections import namedtuple
 from abc import ABC, abstractmethod
@@ -29,14 +46,14 @@ Batch = namedtuple('Batch', ('state', 'h', 'c', 'action', 'past_done', 'final_re
 
 
 def init_weights(m):
-    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv1d):
-        torch.nn.init.xavier_uniform_(m.weight)
-    elif isinstance(m, nn.LSTM):
+    if isinstance(m, nn_Linear) or isinstance(m, nn_Conv1d):
+        nn_init.xavier_uniform_(m.weight)
+    elif isinstance(m, nn_LSTM):
         for p in m.parameters():
             if p.data.ndimension() >= 2:
-                nn.init.xavier_uniform_(p.data)
+                nn_init.xavier_uniform_(p.data)
             else:
-                nn.init.uniform_(p.data)
+                nn_init.uniform_(p.data)
 
 
 class BaseAlgorithm(ABC):
@@ -48,7 +65,7 @@ class BaseAlgorithm(ABC):
                  risk_seeking=True,
                  risk_eps=0.05,
                  entropy_coeff=0,
-                 optimizer_class=torch.optim.Adam,
+                 optimizer_class=Adam,
                  learning_rate=0.001,
                  reward_prediction=False,
                  batch_size=64,
@@ -90,8 +107,8 @@ class BaseAlgorithm(ABC):
         self.optimizer = optimizer_class(self.policy.parameters(), lr=learning_rate)
         self.eps = np.finfo(np.float32).eps.item()
 
-        init_functions = {'zeros': lambda size: torch.zeros(size, dtype=torch.float32),
-                          "randint": lambda size: torch.randint(-1, 1, size, dtype=torch.float32)}
+        init_functions = {'zeros': lambda size: torch_zeros(size, dtype=torch_float32),
+                          "randint": lambda size: torch_randint(-1, 1, size, dtype=torch_float32)}
         self.init_type = init_functions[init_type]
 
         # Logs
@@ -114,7 +131,7 @@ class BaseAlgorithm(ABC):
             self.optimize_model(batch, final_rewards, i_epoch=i_epoch)
 
     @abstractmethod
-    @torch.inference_mode()
+    @torch_inference_mode()
     def sample_episodes(self, i_epoch=0):
         return NotImplementedError
 
@@ -133,7 +150,7 @@ class ReinforceAlgorithm(BaseAlgorithm):
         return SummaryWriter(log_dir=self.writer_logdir,
                              comment=f"Reinforce_experiment_{self.dataset}_{time.time()}")
 
-    @torch.inference_mode()
+    @torch_inference_mode()
     def sample_episodes(self, i_epoch=0):
         batch = None
         final_rewards = None
@@ -143,14 +160,14 @@ class ReinforceAlgorithm(BaseAlgorithm):
             c_in = self.init_type((1, self.batch_size, self.env.hidden_size))
 
             state = self.env.reset()
-            past_done = torch.zeros((self.batch_size, 1))
-            horizon = torch.ones((self.batch_size, 1))
+            past_done = torch_zeros((self.batch_size, 1))
+            horizon = torch_ones((self.batch_size, 1))
 
             transitions = [[] for _ in range(self.batch_size)]
             for t in range(self.env.max_horizon):
                 # Select an action
 
-                with torch.inference_mode():
+                with torch_inference_mode():
                     if self.env.observe_hidden_state:
                         state['h'] = h_in.reshape((self.batch_size, 1, self.env.hidden_size)).detach().numpy()
                         state['c'] = c_in.reshape((self.batch_size, 1, self.env.hidden_size)).detach().numpy()
@@ -170,10 +187,10 @@ class ReinforceAlgorithm(BaseAlgorithm):
                             horizon[i] = t
 
                 # Update step information
-                past_done = torch.Tensor(done)
+                past_done = torch_Tensor(done)
                 state = next_state
-                h_in = torch.Tensor(h_out)
-                c_in = torch.Tensor(c_out)
+                h_in = torch_Tensor(h_out)
+                c_in = torch_Tensor(c_out)
 
                 if done.sum() == self.batch_size:
                     break
@@ -238,14 +255,14 @@ class ReinforceAlgorithm(BaseAlgorithm):
                     filtered_rewards.append(r)
 
             for k in self.env.observation_space.spaces.keys():
-                filtered_state[k] = torch.Tensor(filtered_state[k])
+                filtered_state[k] = torch_Tensor(filtered_state[k])
 
             if filtered_h_in != []:
-                filtered_h_in = torch.vstack(filtered_h_in).unsqueeze(0)
-                filtered_c_in = torch.vstack(filtered_c_in).unsqueeze(0)
-                filtered_action = torch.vstack(filtered_action)
-                filtered_done = torch.Tensor(filtered_done)
-                filtered_rewards = torch.Tensor(filtered_rewards)
+                filtered_h_in = torch_vstack(filtered_h_in).unsqueeze(0)
+                filtered_c_in = torch_vstack(filtered_c_in).unsqueeze(0)
+                filtered_action = torch_vstack(filtered_action)
+                filtered_done = torch_Tensor(filtered_done)
+                filtered_rewards = torch_Tensor(filtered_rewards)
             return filtered_state, filtered_h_in, filtered_c_in, filtered_action, filtered_done, filtered_rewards
 
         # Filter top trajectories
@@ -259,26 +276,26 @@ class ReinforceAlgorithm(BaseAlgorithm):
         # Perform forward pass
         action_logits, aaa, bbb, other_predictions = self.policy.forward(state, h_in, c_in)
         inputs_hat, score_estimations = other_predictions
-        m = CategoricalMasked(logits=action_logits, masks=torch.BoolTensor(state['current_mask'].detach().numpy()))
+        m = CategoricalMasked(logits=action_logits, masks=torch_BoolTensor(state['current_mask'].detach().numpy()))
 
         # compute log_probs
         log_probs = m.log_prob(action)[:, 0]
         entropy = m.entropy()
 
         # Compute loss
-        policy_loss = - torch.mul(log_probs, rewards - top_epsilon_quantile) + self.get_bonus(rewards,
+        policy_loss = - torch_mul(log_probs, rewards - top_epsilon_quantile) + self.get_bonus(rewards,
                                                                                               log_probs,
                                                                                               num_samples)
         score_error = 0
         if self.reward_prediction:
-            score_estimation = torch.gather(score_estimations.squeeze(1), dim=1, index=action)
-            score_error = nn.MSELoss()(torch.mul(score_estimation, done), torch.mul(rewards, done))
+            score_estimation = torch_gather(score_estimations.squeeze(1), dim=1, index=action)
+            score_error = nn_MSELoss()(torch_mul(score_estimation, done), torch_mul(rewards, done))
 
         # sum up all the values of policy_losses and value_losses
         loss = policy_loss.mean() - self.entropy_coeff * entropy.mean() + 0.0001 * score_error
         if self.policy.autoencoder:
             ae_loss = 0
-            criterion = nn.MSELoss()
+            criterion = nn_MSELoss()
             for k, state_k in state.items():
                 ae_loss += criterion(inputs_hat[k], state_k)
 
@@ -288,7 +305,7 @@ class ReinforceAlgorithm(BaseAlgorithm):
         # perform backprop
         loss.backward()
 
-        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 1)
+        torch_nn_utils_clip_grad_norm_(self.policy.parameters(), 1)
         self.optimizer.step()
 
         if self.verbose:

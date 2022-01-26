@@ -16,10 +16,21 @@ import itertools
 
 warnings.filterwarnings("ignore")
 
-import torch
+from torch.autograd import set_detect_anomaly as torch_autograd_set_detect_anomaly
+torch_autograd_set_detect_anomaly(True)
+
+from torch import inference_mode as torch_inference_mode
+from torch import ones as torch_ones
+from torch import zeros as torch_zeros
+from torch import Tensor as torch_Tensor
+from torch import BoolTensor as torch_BoolTensor
+from torch import vstack as torch_vstack
+from torch import log as torch_log
+from torch import mul as torch_mul
+from torch.nn.utils import clip_grad_norm_ as torch_nn_utils_clip_grad_norm_
+
 from torch.utils.tensorboard import SummaryWriter
 
-torch.autograd.set_detect_anomaly(True)
 from tabulate import tabulate
 
 from algorithms import ReinforceAlgorithm
@@ -35,7 +46,7 @@ class DemonstrationReinforceAlgorithm(ReinforceAlgorithm):
         self.nb_suggestions = nb_suggestions
         self.interactive_indices = np.random.choice(a=self.batch_size, size=self.nb_suggestions)
 
-    @torch.inference_mode()
+    @torch_inference_mode()
     def sample_episodes(self, i_epoch=0):
         batch = None
         final_rewards = None
@@ -45,14 +56,14 @@ class DemonstrationReinforceAlgorithm(ReinforceAlgorithm):
             c_in = self.init_type((1, self.batch_size, self.env.hidden_size))
 
             state = self.env.reset()
-            past_done = torch.zeros((self.batch_size, 1))
-            horizon = torch.ones((self.batch_size, 1))
+            past_done = torch_zeros((self.batch_size, 1))
+            horizon = torch_ones((self.batch_size, 1))
 
             transitions = [[] for _ in range(self.batch_size)]
             for t in range(self.env.max_horizon):
                 # Select an action
 
-                with torch.inference_mode():
+                with torch_inference_mode():
                     if self.env.observe_hidden_state:
                         state['h'] = h_in.reshape((self.batch_size, 1, self.env.hidden_size)).detach().numpy()
                         state['c'] = c_in.reshape((self.batch_size, 1, self.env.hidden_size)).detach().numpy()
@@ -73,10 +84,10 @@ class DemonstrationReinforceAlgorithm(ReinforceAlgorithm):
                             horizon[i] = t
 
                 # Update step information
-                past_done = torch.Tensor(done)
+                past_done = torch_Tensor(done)
                 state = next_state
-                h_in = torch.Tensor(h_out)
-                c_in = torch.Tensor(c_out)
+                h_in = torch_Tensor(h_out)
+                c_in = torch_Tensor(c_out)
 
                 if done.sum() == self.batch_size:
                     break
@@ -126,7 +137,7 @@ class DemonstrationReinforceAlgorithm(ReinforceAlgorithm):
         action_logits, h_out, c_out, other_predictions = self.policy.forward(state, h_in, c_in)
 
         # create a categorical distribution over the list of probabilities of actions
-        m = CategoricalMasked(logits=action_logits, masks=torch.BoolTensor(state['current_mask']))
+        m = CategoricalMasked(logits=action_logits, masks=torch_BoolTensor(state['current_mask']))
 
         # and sample an action using the distribution
         action = m.sample()
@@ -207,7 +218,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         return SummaryWriter(log_dir=self.writer_logdir,
                              comment=f"Preference_with_GUI_Reinforce_experiment_{self.dataset}_{time.time()}")
 
-    @torch.inference_mode()
+    @torch_inference_mode()
     def sample_episodes(self, i_epoch=0):
         if (i_epoch % self.user.interaction_frequency != 0) & self.user.reuse & (self.past_trajectories is not None):
             if self.verbose:
@@ -227,14 +238,14 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             c_in = self.init_type((1, self.batch_size, self.env.hidden_size))
 
             state = self.env.reset()
-            past_done = torch.zeros((self.batch_size, 1))
-            horizon = torch.ones((self.batch_size, 1))
+            past_done = torch_zeros((self.batch_size, 1))
+            horizon = torch_ones((self.batch_size, 1))
 
             transitions = [[] for _ in range(self.batch_size)]
             for t in range(self.env.max_horizon):
                 # Select an action
 
-                with torch.inference_mode():
+                with torch_inference_mode():
                     if self.env.observe_hidden_state:
                         state['h'] = h_in.reshape((self.batch_size, 1, self.env.hidden_size)).detach().numpy()
                         state['c'] = c_in.reshape((self.batch_size, 1, self.env.hidden_size)).detach().numpy()
@@ -255,10 +266,10 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                             horizon[i] = t
 
                 # Update step information
-                past_done = torch.Tensor(done)
+                past_done = torch_Tensor(done)
                 state = next_state
-                h_in = torch.Tensor(h_out)
-                c_in = torch.Tensor(c_out)
+                h_in = torch_Tensor(h_out)
+                c_in = torch_Tensor(c_out)
 
                 if done.sum() == self.batch_size:
                     break
@@ -370,7 +381,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         answers = gui_answers["pairs"]['answers']
 
         if suggestions != []:
-            with torch.inference_mode():
+            with torch_inference_mode():
                 simulated_transitions, simulated_rewards, simulated_translations = self.simulate_trajectories(
                     suggestions)
         else:
@@ -415,7 +426,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                 preferences_indices += [id_left, id_right]
                 preference_probs += [1 / 2 * prob_left, 1 / 2 * prob_right]
 
-        return preferences_indices, torch.Tensor(preference_probs), simulated_rewards, simulated_transitions
+        return preferences_indices, torch_Tensor(preference_probs), simulated_rewards, simulated_transitions
 
     def simulate_trajectories(self, suggested_trajectories):
         nb_suggestions = len(suggested_trajectories)
@@ -423,13 +434,13 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         c_in = self.init_type((1, nb_suggestions, self.env.hidden_size))
 
         state, suggestions_infos = self.env.simulate_reset(nb_suggestions)
-        past_done = torch.zeros((nb_suggestions, 1))
-        horizon = torch.ones((nb_suggestions, 1))
+        past_done = torch_zeros((nb_suggestions, 1))
+        horizon = torch_ones((nb_suggestions, 1))
 
         transitions = [[] for _ in range(nb_suggestions)]
         for h in range(self.env.max_horizon):
             if suggested_trajectories:
-                suggested_actions = torch.Tensor([
+                suggested_actions = torch_Tensor([
                     {True: suggestion['action_ids'][h % len(suggestion['action_ids'])], False: 0}[
                         h < len(suggestion['action_ids'])]
                     for suggestion in suggested_trajectories])
@@ -454,10 +465,10 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                         horizon[i] = h
 
             # Update step information
-            past_done = torch.Tensor(done)
+            past_done = torch_Tensor(done)
             state = next_state
-            h_in = torch.Tensor(h_out)
-            c_in = torch.Tensor(c_out)
+            h_in = torch_Tensor(h_out)
+            c_in = torch_Tensor(c_out)
             if done.sum() == nb_suggestions:
                 break
 
@@ -487,15 +498,15 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                     filtered_preferences.append(preferences[i_in_pref_list])
 
             for k in self.env.observation_space.spaces.keys():
-                filtered_state[k] = torch.Tensor(filtered_state[k])
+                filtered_state[k] = torch_Tensor(filtered_state[k])
 
             if filtered_h_in != []:
-                filtered_h_in = torch.vstack(filtered_h_in).unsqueeze(0)
-                filtered_c_in = torch.vstack(filtered_c_in).unsqueeze(0)
-                filtered_action = torch.vstack(filtered_action)
-                filtered_done = torch.Tensor(filtered_done)
-                filtered_rewards = torch.Tensor(filtered_rewards)
-                filtered_preferences = torch.Tensor(filtered_preferences)
+                filtered_h_in = torch_vstack(filtered_h_in).unsqueeze(0)
+                filtered_c_in = torch_vstack(filtered_c_in).unsqueeze(0)
+                filtered_action = torch_vstack(filtered_action)
+                filtered_done = torch_Tensor(filtered_done)
+                filtered_rewards = torch_Tensor(filtered_rewards)
+                filtered_preferences = torch_Tensor(filtered_preferences)
             return filtered_state, filtered_h_in, filtered_c_in, filtered_action, filtered_done, filtered_rewards, \
                    filtered_preferences
 
@@ -513,14 +524,14 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         action_logits, _, _, other_predictions = self.policy.forward(state, h_in, c_in)
 
         inputs_hat, score_estimations = other_predictions
-        m = CategoricalMasked(logits=action_logits, masks=torch.BoolTensor(state['current_mask'].detach().numpy()))
+        m = CategoricalMasked(logits=action_logits, masks=torch_BoolTensor(state['current_mask'].detach().numpy()))
 
         # compute log_probs
         log_probs = m.log_prob(action)[:, 0]
         entropy = m.entropy()
 
         # Compute loss
-        policy_loss = - torch.mul(log_probs - torch.log(human_probs), rewards - top_epsilon_quantile).mean()
+        policy_loss = - torch_mul(log_probs - torch_log(human_probs), rewards - top_epsilon_quantile).mean()
 
         entropy = m.entropy()
         loss = policy_loss.mean() - self.entropy_coeff * entropy.mean()
@@ -528,7 +539,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         # perform backprop
         loss.backward()
 
-        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 1)
+        torch_nn_utils_clip_grad_norm_(self.policy.parameters(), 1)
         self.optimizer.step()
 
         if self.verbose:
@@ -608,4 +619,4 @@ class PreferenceReinforceAlgorithm(PreferenceReinforceGUI):
             else:
                 self.preferences[(self.env.translations[id_right], self.env.translations[id_left])] = answer
 
-        return preferences_indices, torch.Tensor(preference_probs), [], []
+        return preferences_indices, torch_Tensor(preference_probs), [], []
