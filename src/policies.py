@@ -10,9 +10,6 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-from torch.autograd import set_detect_anomaly as torch_autograd_set_detect_anomaly
-torch_autograd_set_detect_anomaly(True)
-
 from torch import Tensor as torch_Tensor
 from torch import BoolTensor as torch_BoolTensor
 from torch import cat as torch_cat

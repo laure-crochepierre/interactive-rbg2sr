@@ -14,9 +14,6 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-from torch.autograd import set_detect_anomaly as torch_autograd_set_detect_anomaly
-torch_autograd_set_detect_anomaly(True)
-
 from torch import inference_mode as torch_inference_mode
 from torch import ones as torch_ones
 from torch import zeros as torch_zeros

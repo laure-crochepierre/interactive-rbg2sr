@@ -9,8 +9,6 @@
 import os
 import json
 import time
-from torch.autograd import set_detect_anomaly
-set_detect_anomaly(True)
 from torch import set_num_threads
 set_num_threads(1)
 from torch.random import manual_seed as torch_manual_seed
