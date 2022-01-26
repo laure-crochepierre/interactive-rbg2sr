@@ -71,7 +71,7 @@ class RealUser(User):
             if self.dbx is None:
                 gui_answers = pickle.load(open(answer_path, 'rb'))
             else:
-                _, file_content = self.dbx.files_upload(answer_path)
+                _, file_content = self.dbx.files_download(answer_path)
                 gui_answers = pickle.loads(file_content.content)
 
             self.preferences = gui_answers
