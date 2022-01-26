@@ -5,7 +5,7 @@
 # you can obtain one at http://mozilla.org/MPL/2.0/.
 # SPDX-License-Identifier: MPL-2.0
 # This file is part of the interactive-RBG2SR an interactive approach to reinforcement based grammar guided symbolic regression
-
+import gc
 import os
 import re
 import json
@@ -433,6 +433,7 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
 
     hidden_before = not hidden_during
     hidden_waiter = not hidden_iteration_data
+    gc.collect()
     return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
            pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
            continuer_box, selected_row_indices, visu_dropdown, visu_graph
@@ -675,6 +676,8 @@ def update_selected_action(selected_value, n_clicks_restart, n_clicks_suggestion
         local_expression_data['current_symbol'] = grammar['start_symbol']
         local_expression_data['action_ids'] = []
         local_expression_data['comparison_with_id'] = None
+
+        gc.collect()
         return dash.no_update, local_expression_data, dash.no_update, disabled_validation, dash.no_update
     elif "restart-suggest" in ctx.triggered[0]['prop_id']:
         local_expression_data['queue'] = []
@@ -690,13 +693,19 @@ def update_selected_action(selected_value, n_clicks_restart, n_clicks_suggestion
         expression = local_expression_data['translation']
         dd = dcc.Dropdown(
             id={'type': "select-action", 'index': current_step},
-            options=options),
+            options=options)
+
+        gc.collect()
         return dd, local_expression_data, expression, True, []
     elif "suggestion-validation" in ctx.triggered[0]['prop_id']:
+
+        gc.collect()
         return dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
                [str(n_clicks_suggestion_validation) + str(local_expression_data)]
     elif "suggestion-id" in ctx.triggered[0]['prop_id']:
         local_expression_data['comparison_with_id'] = suggestion_id
+
+        gc.collect()
         return dash.no_update, local_expression_data, dash.no_update, disabled_validation, dash.no_update
 
     if selected_value is not None:
@@ -711,6 +720,8 @@ def update_selected_action(selected_value, n_clicks_restart, n_clicks_suggestion
     if len(local_expression_data['queue']) == 0:
         expression = local_expression_data['translation']
         disabled_validation = ('<' in local_expression_data['translation']) or (suggestion_id is None)
+
+        gc.collect()
         return dash.no_update, local_expression_data, expression, disabled_validation, dash.no_update
     else:
         next_symbol = local_expression_data['queue'].pop(0)
@@ -723,6 +734,8 @@ def update_selected_action(selected_value, n_clicks_restart, n_clicks_suggestion
         expression = local_expression_data['translation']
         dd = dcc.Dropdown(id={'type': "select-action", 'index': current_step}, options=options),
         disabled_validation = ('<' in local_expression_data['translation']) or (suggestion_id is None)
+
+        gc.collect()
         return dd, local_expression_data, expression, disabled_validation, dash.no_update
 
 
@@ -781,6 +794,8 @@ def validate_prefs(logdir, pair_indexes, current_step, right_pref, left_pref, bo
     else:
         dbx = dropbox.Dropbox(os.environ.get('DROPBOX_ACCESS_TOKEN'))
         dbx.files_upload(pickle.dumps(prefs), path=answers_path)
+
+    gc.collect()
 
 
 def table_callback(selected_row_indices):
