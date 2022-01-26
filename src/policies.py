@@ -9,6 +9,7 @@
 import math
 import numpy as np
 import warnings
+
 warnings.filterwarnings("ignore")
 
 import torch
@@ -79,14 +80,14 @@ class Policy(nn.Module):
                             transformer_encoder = nn.Sequential(
                                 nn.TransformerEncoderLayer(d_model=space.shape[1], nhead=1, dim_feedforward=16,
                                                            batch_first=True),
-                                nn.Conv1d(space.shape[0],1, 4),
+                                nn.Conv1d(space.shape[0], 1, 4),
                                 self.non_linearity,
-                                nn.Linear(space.shape[1]-4+1, self.embedding_dim),
+                                nn.Linear(space.shape[1] - 4 + 1, self.embedding_dim),
                                 self.non_linearity
                             )
 
                             setattr(self, f"encoder_{key}", transformer_encoder)
-                        else :
+                        else:
                             encoder = nn.Sequential(
                                 nn.Conv1d(space.shape[0], 1, 4),
                                 self.non_linearity,
@@ -97,8 +98,8 @@ class Policy(nn.Module):
                             setattr(self, f"encoder_{key}", encoder)
                 self.encoders[key] = getattr(self, f"encoder_{key}")
 
-            self.features_encoder_layer = nn.Linear(self.embedding_dim*len(self.observation_space.spaces),
-                                              self.hidden_dim)
+            self.features_encoder_layer = nn.Linear(self.embedding_dim * len(self.observation_space.spaces),
+                                                    self.hidden_dim)
             if self.autoencoder:
                 self.decoders = {}
                 for key, space in self.observation_space.spaces.items():
@@ -140,9 +141,9 @@ class Policy(nn.Module):
 
         self.multiply = torch.multiply
         self.score_predictor = nn.Sequential(
-            nn.Linear(in_features=self.hidden_dim, out_features=int(self.hidden_dim/2)),
+            nn.Linear(in_features=self.hidden_dim, out_features=int(self.hidden_dim / 2)),
             self.non_linearity,
-            nn.Linear(in_features=int(self.hidden_dim/2), out_features=int(self.hidden_dim /4)),
+            nn.Linear(in_features=int(self.hidden_dim / 2), out_features=int(self.hidden_dim / 4)),
             self.non_linearity,
             nn.Linear(in_features=int(self.hidden_dim / 4), out_features=self.n_actions),
         )
@@ -269,6 +270,7 @@ class DqnPolicy(Policy):
             else:
                 a = torch.Tensor(list(WeightedRandomSampler(mask, 1)))[0, 0]
             return a
+
         action = torch.vstack([_select_one_action(x_i, state['current_mask'][i])
                                for i, x_i in enumerate(torch.unbind(q_value_logits, dim=0))])[:, 0]
         q_value = torch.vstack([x_i[0, action[i].detach().numpy()] for i, x_i in

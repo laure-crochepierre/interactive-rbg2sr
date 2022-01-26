@@ -11,6 +11,7 @@ import copy
 import random
 import time
 import pickle
+import dropbox
 
 import numpy as np
 
@@ -40,12 +41,39 @@ class RealUser(User):
         self.type = "real"
         self.rules = None
 
+        self.dbx = None
+        if os.environ.get("DROPBOX_ACCESS_TOKEN") is not None:
+            self.dbx = dropbox.Dropbox(os.environ.get('DROPBOX_ACCESS_TOKEN'))
+
     def select_preference(self, gui_infos, i_epoch):
         if (not self.reuse) or (i_epoch % self.interaction_frequency == 0):
-            pickle.dump(gui_infos, open(os.path.join(self.gui_data_path, f"{i_epoch}.pkl"), 'wb'))
-            while not os.path.exists(os.path.join(self.gui_data_path, f"{i_epoch}_answers.pkl")):
+
+            questions_path = os.path.join(self.gui_data_path, f"{i_epoch}.pkl")
+            if self.dbx is None:
+                pickle.dump(gui_infos, open(questions_path, 'wb'))
+            else:
+                self.dbx.files_upload(pickle.dumps(gui_infos), path=questions_path)  # save data to dropbox
+
+            answer_path = os.path.join(self.gui_data_path, f"{i_epoch}_answers.pkl")
+            answers_path_exist = False
+            while not answers_path_exist:
                 time.sleep(2)
-            gui_answers = pickle.load(open(os.path.join(self.gui_data_path, f"{i_epoch}_answers.pkl"), 'rb'))
+                if self.dbx is None:
+                    answers_path_exist = os.path.exists(answer_path)
+                else:
+                    try:
+                        self.dbx.files_get_metadata(answer_path)
+                        answers_path_exist = True
+                    except Exception as e:
+                        answers_path_exist = False
+
+            gui_answers = None
+            if self.dbx is None:
+                gui_answers = pickle.load(open(answer_path, 'rb'))
+            else:
+                _, file_content = self.dbx.files_upload(answer_path)
+                gui_answers = pickle.loads(file_content.content)
+
             self.preferences = gui_answers
             if 'rules' in list(gui_answers.keys()):
                 self.rules = gui_answers['rules']
@@ -64,7 +92,8 @@ class SelectBestRewardUser(User):
             simulated_answers['pairs']['ids'] = gui_infos['combinaisons']
 
             rewards = gui_infos['rewards']
-            answers = np.array([{True: 'r', False: 'l'}[rewards[i1] < rewards[i2]] for i1, i2 in gui_infos['combinaisons']])
+            answers = np.array(
+                [{True: 'r', False: 'l'}[rewards[i1] < rewards[i2]] for i1, i2 in gui_infos['combinaisons']])
             simulated_answers['pairs']['answers'] = answers
             self.preferences = simulated_answers
         return self.preferences
@@ -82,7 +111,8 @@ class SelectRandomRewardUser(User):
             simulated_answers['pairs']['ids'] = gui_infos['combinaisons']
 
             rewards = gui_infos['rewards']
-            answers = np.array([{True: 'r', False: 'l'}[random.uniform(0, 1) > 0.5] for i1, i2 in gui_infos['combinaisons']])
+            answers = np.array(
+                [{True: 'r', False: 'l'}[random.uniform(0, 1) > 0.5] for i1, i2 in gui_infos['combinaisons']])
             simulated_answers['pairs']['answers'] = answers
             self.preferences = simulated_answers
         return self.preferences

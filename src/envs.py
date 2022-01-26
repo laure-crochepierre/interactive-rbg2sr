@@ -7,11 +7,15 @@
 # This file is part of the interactive-RBG2SR an interactive approach to reinforcement based grammar guided symbolic regression
 
 import re
+import os
+
+import dropbox
 import pandas as pd
 import numpy as np
 
 from scipy import optimize
 from numba import jit, float32
+from io import BytesIO
 
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from sklearn.model_selection import train_test_split
@@ -25,9 +29,10 @@ import gym.spaces as spaces
 from utils.grammar_parser import ProbabilisticGrammar
 from utils.constraints import Constraints
 
+
 @jit(nopython=True)  # , float32(float32, float32)
 def base_metric(y, yhat):
-    return 1 / (1 + ((y-yhat)**2).mean())
+    return 1 / (1 + ((y - yhat) ** 2).mean())
 
 
 class BatchSymbolicRegressionEnv(gym.Env):
@@ -79,11 +84,24 @@ class BatchSymbolicRegressionEnv(gym.Env):
         self.X_train, self.X_test = None, None
         if test_data_path is not None:
             if ".feather" in train_data_path:
+                if os.environ.get("DROPBOX_ACCESS_TOKEN") is not None:
+                    raise AssertionError('DROPBOX_ACCESS_TOKEN environment var is set. '
+                                         'You also have to choose csv files instead of feather')
                 self.X_train = pd.read_feather(train_data_path)
                 self.X_test = pd.read_feather(test_data_path)
             elif ".csv" in train_data_path:
-                self.X_train = pd.read_csv(train_data_path)
-                self.X_test = pd.read_csv(test_data_path)
+                if os.environ.get("DROPBOX_ACCESS_TOKEN") is not None:
+
+                    dbx = dropbox.Dropbox(os.environ.get('DROPBOX_ACCESS_TOKEN'))
+                    _, train_bytes = dbx.files_download(train_data_path.replace('..', ''))
+                    train_data = BytesIO(train_bytes.content)
+                    self.X_train = pd.read_csv(train_data)
+                    _, test_bytes = dbx.files_download(test_data_path.replace('..', ''))
+                    test_data = BytesIO(test_bytes.content)
+                    self.X_test = pd.read_csv(test_data)
+                else:
+                    self.X_train = pd.read_csv(train_data_path)
+                    self.X_test = pd.read_csv(test_data_path)
             if normalize:
                 if normalization_type == 'standard_scaler':
                     self.scaler = StandardScaler()
@@ -99,6 +117,9 @@ class BatchSymbolicRegressionEnv(gym.Env):
             self.y_test = self.X_test[target]
             self.X_test.drop(columns=[target], inplace=True)
         else:
+            if os.environ.get("DROPBOX_ACCESS_TOKEN") is not None:
+                raise AssertionError('DROPBOX_ACCESS_TOKEN environment var is set. '
+                                     'You also have to specify a test set on dropbox')
             if ".feather" in train_data_path:
                 x = pd.read_feather(train_data_path).iloc[:20000]
             elif ".csv" in train_data_path:
@@ -114,10 +135,6 @@ class BatchSymbolicRegressionEnv(gym.Env):
         y_std = self.y_train.std()
 
         self.metric = base_metric
-
-        if self.outlier_heuristic & (abs(self.y_train.max() - self.y_train.min()) > 1e3):
-            print(f"Dataset {train_data_path.split('/')[-2]} has outliers")
-            metric = lambda y_true, y_pred: 1 / (1 + mean_absolute_error(y_true, y_pred))
 
         # Load grammar from file
         self.start_symbol = start_symbol
@@ -150,11 +167,11 @@ class BatchSymbolicRegressionEnv(gym.Env):
             space_dict["h"] = spaces.MultiBinary(self.hidden_size)
             space_dict["c"] = spaces.MultiBinary(self.hidden_size)
         if self.observe_previous_actions:
-            space_dict['past_actions'] = spaces.MultiBinary((self.max_horizon, self.n_actions+1))
+            space_dict['past_actions'] = spaces.MultiBinary((self.max_horizon, self.n_actions + 1))
         if self.observe_brotherhood:
-            space_dict['brother_action'] = spaces.MultiBinary((self.grammar.max_brother_symbols, self.n_actions+1))
+            space_dict['brother_action'] = spaces.MultiBinary((self.grammar.max_brother_symbols, self.n_actions + 1))
         if self.observe_parent:
-            space_dict['parent_action'] = spaces.MultiBinary(self.n_actions+1)
+            space_dict['parent_action'] = spaces.MultiBinary(self.n_actions + 1)
 
         self.observation_space = spaces.Dict(space_dict)
 
@@ -183,7 +200,7 @@ class BatchSymbolicRegressionEnv(gym.Env):
         self.translations = [self.start_symbol] * self.batch_size
         self.i_step = 0
 
-        self.past_actions = np.full((self.batch_size, self.max_horizon, self.grammar.n_discrete_actions+1),
+        self.past_actions = np.full((self.batch_size, self.max_horizon, self.grammar.n_discrete_actions + 1),
                                     self.grammar.action_encoding["#"])
 
         observation = {}
@@ -199,10 +216,10 @@ class BatchSymbolicRegressionEnv(gym.Env):
             observation['past_actions'] = self.past_actions
         if self.observe_brotherhood:
             observation['brother_action'] = np.full((self.batch_size, self.grammar.max_brother_symbols,
-                                                     self.grammar.n_discrete_actions+1),
+                                                     self.grammar.n_discrete_actions + 1),
                                                     self.grammar.action_encoding["#"])
         if self.observe_parent:
-            observation['parent_action'] = np.full((self.batch_size, 1, self.grammar.n_discrete_actions+1),
+            observation['parent_action'] = np.full((self.batch_size, 1, self.grammar.n_discrete_actions + 1),
                                                    self.grammar.action_encoding["#"])
 
         return observation
@@ -225,8 +242,8 @@ class BatchSymbolicRegressionEnv(gym.Env):
             self.translations[i] = re.sub("<.+?>", action['raw'], self.translations[i], 1)
 
             # Store action in list
-            self.past_actions_with_parent_infos[i] = self.past_actions_with_parent_infos[i] + \
-                                                     [(action['raw'], self.current_parent_infos[i])]
+            self.past_actions_with_parent_infos[i] = self.past_actions_with_parent_infos[i] + [
+                (action['raw'], self.current_parent_infos[i])]
 
             # Append descendant symbols to the queue.
             parent_action_info = (action['raw'], self.i_step)
@@ -254,7 +271,8 @@ class BatchSymbolicRegressionEnv(gym.Env):
                             for potential_brother_action, parent_info in self.past_actions_with_parent_infos[i]
                             if parent_info == new_parent_infos]
 
-                brothers = brothers + [self.grammar.action_encoding['#'][0] for _ in range(self.grammar.max_brother_symbols - len(brothers))]
+                brothers = brothers + [self.grammar.action_encoding['#'][0] for _ in
+                                       range(self.grammar.max_brother_symbols - len(brothers))]
                 new_brothers[i] = np.array(brothers)
 
             m = self.grammar.symbols_to_mask[new_current_symbol]
@@ -288,7 +306,8 @@ class BatchSymbolicRegressionEnv(gym.Env):
             observation['past_actions'] = self.past_actions
         if self.observe_brotherhood:
             assert len(new_brothers) == self.batch_size
-            if  new_brothers.shape == (self.batch_size, self.grammar.max_brother_symbols, 1, self.grammar.n_discrete_actions+1):
+            if new_brothers.shape == (self.batch_size, self.grammar.max_brother_symbols, 1,
+                                      self.grammar.n_discrete_actions + 1):
                 new_brothers = np.squeeze(new_brothers, axis=2)
             observation['brother_action'] = new_brothers
         if self.observe_parent:
@@ -305,13 +324,14 @@ class BatchSymbolicRegressionEnv(gym.Env):
 
     def evaluate_on_data(self, i_t, t):
         reward = 0
-        if ("<" in t) or (t==""):
+        if ("<" in t) or (t == ""):
             return reward
         else:
             def lasso_fit(columns_list):
                 model = Lasso(alpha=0.01, max_iter=1000)
                 model.fit(self.X_train[columns_list], self.y_train.values.reshape(-1, 1))
                 return model.predict(self.X_train[columns_list])
+
             try:
                 if self.constant_optimizer & ("const" in t):
                     constants = self.optimize_constants(t)
@@ -355,16 +375,15 @@ class BatchSymbolicRegressionEnv(gym.Env):
         string_args = ", ".join(['const' + str(i) for i in range(expression.count("const"))])
 
         def f(const, expression, str_args, x_train, y_train):
-
             tmp_f = eval(f"lambda {str_args}, x, y: np.sum(({expression} - y)**2)")
             res = tmp_f(x=x_train, y=y_train, *const)
             return res
 
         initial_guess = np.random.rand(expression.count('const'))
         constants = optimize.minimize(f, initial_guess, method='BFGS', args=(expression,
-                                                              string_args,
-                                                              self.X_train,
-                                                              self.y_train))
+                                                                             string_args,
+                                                                             self.X_train,
+                                                                             self.y_train))
 
         return constants['x']
 
@@ -382,6 +401,7 @@ class BatchSymbolicRegressionEnv(gym.Env):
                 model = Lasso(alpha=0.01, max_iter=1000)
                 model.fit(self.X_test[columns_list], self.y_test.values.reshape(-1, 1))
                 return model.predict(self.X_test[columns_list])
+
             try:
                 if self.constant_optimizer & ("const" in t):
                     constants = self.optimize_constants(t)
@@ -390,8 +410,8 @@ class BatchSymbolicRegressionEnv(gym.Env):
                         self.translations[i_t] = t
             except Exception as e:
                 str(e)
-                #print(e)
-            try :
+                # print(e)
+            try:
                 x = self.X_test
                 if isinstance(x, pd.DataFrame) & self.use_np:
                     x = x.values
@@ -405,14 +425,14 @@ class BatchSymbolicRegressionEnv(gym.Env):
         suggestions_infos = {
             "done": np.zeros((nb_suggestions, 1)),
             "queue": [[]] * nb_suggestions,
-            "current_parent_infos":  [('#', -1)] * nb_suggestions,
+            "current_parent_infos": [('#', -1)] * nb_suggestions,
             "past_actions_with_parent_infos": [[]] * nb_suggestions,
             "translations": [self.start_symbol] * nb_suggestions,
             "i_step": 0,
-            'past_actions':  np.full((nb_suggestions,
-                                      self.max_horizon,
-                                      self.grammar.n_discrete_actions + 1),
-                                     self.grammar.action_encoding["#"])}
+            'past_actions': np.full((nb_suggestions,
+                                     self.max_horizon,
+                                     self.grammar.n_discrete_actions + 1),
+                                    self.grammar.action_encoding["#"])}
 
         observation = {}
         if self.observe_symbol:
@@ -450,15 +470,18 @@ class BatchSymbolicRegressionEnv(gym.Env):
                 new_brothers[i] = np.array([[self.grammar.action_encoding['#'][0]] * self.grammar.max_brother_symbols])
                 continue
             action = self.grammar.productions_list[int(action_id)]
-            suggestions_infos['translations'][i] = re.sub("<.+?>", action['raw'], suggestions_infos['translations'][i], 1)
+            suggestions_infos['translations'][i] = re.sub("<.+?>", action['raw'], suggestions_infos['translations'][i],
+                                                          1)
 
             # Store action in list
-            suggestions_infos['past_actions_with_parent_infos'][i] = suggestions_infos['past_actions_with_parent_infos'][i] + \
-                                                     [(action['raw'], suggestions_infos['current_parent_infos'][i])]
+            suggestions_infos['past_actions_with_parent_infos'][i] = \
+            suggestions_infos['past_actions_with_parent_infos'][i] + \
+            [(action['raw'], suggestions_infos['current_parent_infos'][i])]
 
             # Append descendant symbols to the queue.
             parent_action_info = (action['raw'], suggestions_infos['i_step'])
-            suggestions_infos['queue'][i] = [(s, parent_action_info) for s in action["descendant_symbols"]] + suggestions_infos['queue'][i]
+            suggestions_infos['queue'][i] = [(s, parent_action_info) for s in action["descendant_symbols"]] + \
+                                            suggestions_infos['queue'][i]
             if not suggestions_infos['queue'][i]:
                 suggestions_infos['done'][i] = 1
                 if suggestions_infos['i_step'] <= self.min_horizon:
@@ -490,9 +513,11 @@ class BatchSymbolicRegressionEnv(gym.Env):
             if self.apply_constraints:
                 c = self.constraints.init_constraint()
                 queue_min_size = sum([min([p['distance_to_terminal']
-                                           for p in self.grammar.productions_dict[q]]) for q, _ in suggestions_infos['queue'][i]])
+                                           for p in self.grammar.productions_dict[q]]) for q, _ in
+                                      suggestions_infos['queue'][i]])
 
-                c = self.constraints.make_min_max_constraint(c, new_current_symbol, suggestions_infos['i_step'] + queue_min_size)
+                c = self.constraints.make_min_max_constraint(c, new_current_symbol,
+                                                             suggestions_infos['i_step'] + queue_min_size)
                 c = self.constraints.make_trig_constraint(c, new_current_symbol, suggestions_infos['translations'][i])
 
                 m = np.multiply(c, m)
@@ -503,7 +528,8 @@ class BatchSymbolicRegressionEnv(gym.Env):
             new_masks[i] = m
 
             # Update current symbol previously_selected_actions with the action input
-            suggestions_infos['past_actions'][i][suggestions_infos['i_step']] = self.grammar.action_encoding[str(action['raw'])][0]
+            suggestions_infos['past_actions'][i][suggestions_infos['i_step']] = \
+                self.grammar.action_encoding[str(action['raw'])][0]
 
         suggestions_infos['i_step'] += 1
         observation = {}
@@ -518,7 +544,7 @@ class BatchSymbolicRegressionEnv(gym.Env):
         if self.observe_brotherhood:
             assert len(new_brothers) == nb_suggestions
             if new_brothers.shape == (
-            nb_suggestions, self.grammar.max_brother_symbols, 1, self.grammar.n_discrete_actions + 1):
+                    nb_suggestions, self.grammar.max_brother_symbols, 1, self.grammar.n_discrete_actions + 1):
                 new_brothers = np.squeeze(new_brothers, axis=2)
             observation['brother_action'] = new_brothers
         if self.observe_parent:
