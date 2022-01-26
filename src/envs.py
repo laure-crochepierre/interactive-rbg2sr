@@ -139,7 +139,8 @@ class BatchSymbolicRegressionEnv(gym.Env):
         # Load grammar from file
         self.start_symbol = start_symbol
         self.grammar_file_path = grammar_file_path
-
+        if os.environ.get("DROPBOX_ACCESS_TOKEN") is not None:
+            grammar_file_path = grammar_file_path.replace('../', "")
         self.grammar = ProbabilisticGrammar(grammar_file_path, start_symbol=start_symbol,
                                             dataset_n_vars=len(self.columns))
 
