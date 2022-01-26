@@ -22,7 +22,7 @@ def launch_training(writer_logdir="./test", dataset_value="nguyen4", grammar_wit
     try:
         params = json.load(open("params.json", 'rb'))
     except:
-        params = json.load(open("/src/params.json", 'rb'))
+        params = json.load(open("src/params.json", 'rb'))
 
     params['dataset'] = dataset_value
     params['env_kwargs']["grammar_file_path"] = params[dataset_value]["grammar_file_path"]
