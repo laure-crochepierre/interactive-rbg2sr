@@ -440,17 +440,18 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
 
 def callback_launch(dataset_value, grammar_value, frequency_value, interaction_type, reuse):
 
-
     if os.environ.get('DROPBOX_ACCESS_TOKEN') is not None:
         writer_logdir = f"/results/interactive_runs/{time.time()}"
         gui_data_logdir = os.path.join(writer_logdir, 'gui_data')
         dbx = dropbox.Dropbox(os.environ.get('DROPBOX_ACCESS_TOKEN'))
+        py_script = 'src/app_interactive_algorithm.py'
     else:
         writer_logdir = f"../results/interactive_runs/{time.time()}"
         gui_data_logdir = os.path.join(writer_logdir, 'gui_data')
         os.makedirs("../results/interactive_runs", exist_ok=True)
         os.makedirs(gui_data_logdir, exist_ok=True)
-    proc = subprocess.Popen([f'python app_interactive_algorithm.py {writer_logdir} {dataset_value} '
+        py_script = 'app_interactive_algorithm.py'
+    proc = subprocess.Popen([f'python {py_script} {writer_logdir} {dataset_value} '
                              f'{grammar_value} {frequency_value} {interaction_type} {reuse}'], shell=True)
     print("Training Launched !")
     return False, False, True, gui_data_logdir, proc.pid
