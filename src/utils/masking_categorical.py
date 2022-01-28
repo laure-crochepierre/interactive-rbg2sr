@@ -6,9 +6,8 @@
 # SPDX-License-Identifier: MPL-2.0
 # This file is part of the interactive-RBG2SR an interactive approach to reinforcement based grammar guided symbolic regression
 
-from typing import Optional
 
-import torch
+from torch import BoolTensor, where, tensor
 from torch.distributions.categorical import Categorical
 
 
@@ -18,13 +17,13 @@ class CategoricalMasked(Categorical):
         if self.masks is None:
             super(CategoricalMasked, self).__init__(probs, logits, validate_args)
         else:
-            self.masks = masks.type(torch.BoolTensor)
-            logits = torch.where(self.masks, logits, torch.tensor(-1e+8))
+            self.masks = masks.type(BoolTensor)
+            logits = where(self.masks, logits, tensor(-1e+8))
             super(CategoricalMasked, self).__init__(probs, logits, validate_args)
 
     def entropy(self):
         if self.masks is None:
             return super(CategoricalMasked, self).entropy()
         p_log_p = self.logits * self.probs
-        p_log_p = torch.where(self.masks, p_log_p, torch.tensor(0.))
+        p_log_p = where(self.masks, p_log_p, tensor(0.))
         return -p_log_p.sum(-1)

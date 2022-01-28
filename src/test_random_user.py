@@ -9,9 +9,8 @@
 import os
 import json
 import time
-import torch
-torch.autograd.set_detect_anomaly(True)
-torch.set_num_threads(1)
+from torch import set_num_threads
+set_num_threads(1)
 
 import fire
 from envs import BatchSymbolicRegressionEnv
