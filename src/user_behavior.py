@@ -37,6 +37,7 @@ class RealUser(User):
     def __init__(self, gui_data_path, **kwargs):
         super(RealUser, self).__init__(**kwargs)
         self.gui_data_path = os.path.join(gui_data_path, "gui_data")
+        self.answer_path = None
         self.description = "Real user. Preferences are queried with an interactive interface"
         self.type = "real"
         self.rules = None
@@ -55,6 +56,7 @@ class RealUser(User):
                 self.dbx.files_upload(pickle.dumps(gui_infos), path=questions_path)  # save data to dropbox
 
             answer_path = os.path.join(self.gui_data_path, f"{i_epoch}_answers.pkl")
+            self.answer_path = answer_path
             answers_path_exist = False
             while not answers_path_exist:
                 time.sleep(2)
@@ -74,10 +76,16 @@ class RealUser(User):
                 _, file_content = self.dbx.files_download(answer_path)
                 gui_answers = pickle.loads(file_content.content)
 
-            self.preferences = gui_answers
             if 'rules' in list(gui_answers.keys()):
                 self.rules = gui_answers['rules']
-        return self.preferences
+        else:
+            gui_answers = None
+            if self.dbx is None:
+                gui_answers = pickle.load(open(self.answer_path, 'rb'))
+            else:
+                _, file_content = self.dbx.files_download(self.answer_path)
+                gui_answers = pickle.loads(file_content.content)
+        return gui_answers
 
 
 class SelectBestRewardUser(User):

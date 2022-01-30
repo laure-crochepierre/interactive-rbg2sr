@@ -323,6 +323,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             if self.verbose:
                 print('Use preferences')
             self.optimize_model_with_preference(batch, final_rewards, i_epoch)
+        del batch
         gc.collect()
 
     def optimize_model_with_preference(self, batch, final_rewards, i_epoch):
