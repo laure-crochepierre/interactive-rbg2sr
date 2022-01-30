@@ -6,6 +6,7 @@
 # SPDX-License-Identifier: MPL-2.0
 # This file is part of the interactive-RBG2SR an interactive approach to reinforcement based grammar guided symbolic regression
 
+import gc
 import os
 import time
 import random
@@ -322,6 +323,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             if self.verbose:
                 print('Use preferences')
             self.optimize_model_with_preference(batch, final_rewards, i_epoch)
+        gc.collect()
 
     def optimize_model_with_preference(self, batch, final_rewards, i_epoch):
         top_epsilon_quantile = np.quantile(final_rewards, 1 - self.risk_eps)

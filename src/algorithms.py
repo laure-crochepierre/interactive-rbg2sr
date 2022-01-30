@@ -6,6 +6,7 @@
 # SPDX-License-Identifier: MPL-2.0
 # This file is part of the interactive-RBG2SR an interactive approach to reinforcement based grammar guided symbolic regression
 
+import gc
 import os
 import time
 import numpy as np
@@ -126,6 +127,7 @@ class BaseAlgorithm(ABC):
                 break
 
             self.optimize_model(batch, final_rewards, i_epoch=i_epoch)
+            gc.collect()
 
     @abstractmethod
     @torch_inference_mode()
@@ -312,6 +314,8 @@ class ReinforceAlgorithm(BaseAlgorithm):
             if self.policy.autoencoder:
                 self.writer.add_scalar('Losses/Autoencoder Loss', ae_loss.detach().numpy(), i_epoch)
                 self.writer.add_scalar('Losses/Weight a', self.policy.ae_coeff_loss.detach().numpy(), i_epoch)
+
+        gc.collect()
 
     def get_bonus(self, total_rewards, total_log_probs, num_samples=0):
         return 0
