@@ -5,7 +5,7 @@
 # you can obtain one at http://mozilla.org/MPL/2.0/.
 # SPDX-License-Identifier: MPL-2.0
 # This file is part of the interactive-RBG2SR an interactive approach to reinforcement based grammar guided symbolic regression
-
+import gc
 import re
 import os
 
@@ -194,6 +194,10 @@ class BatchSymbolicRegressionEnv(gym.Env):
     def reset(self):
 
         self.done = np.zeros((self.batch_size, 1))
+
+        if self.queue is not None:
+            del self.queue, self.current_parent_infos, self.past_actions_with_parent_infos, self.translations
+            gc.collect()
         self.queue = [[]] * self.batch_size
         self.current_parent_infos = [('#', -1)] * self.batch_size
         self.past_actions_with_parent_infos = [[]] * self.batch_size

@@ -195,4 +195,5 @@ class Policy(Module):
         log_probs = m.log_prob(action)
         entropy = m.entropy()
 
+        del m, action_logits
         return action, log_probs, entropy, h_out, c_out, other_predictions

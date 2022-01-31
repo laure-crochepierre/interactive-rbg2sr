@@ -229,6 +229,10 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             print(f'Epoch n° {i_epoch}: sample new trajectories')
         batch = None
         final_rewards = None
+
+        del self.past_trajectories
+        gc.collect()
+
         self.past_trajectories = [[] for _ in range(self.batch_size)]
         while batch is None:
 
@@ -238,6 +242,10 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             state = self.env.reset()
             past_done = torch_zeros((self.batch_size, 1))
             horizon = torch_ones((self.batch_size, 1))
+
+            if transitions is not None:
+                del transitions
+                gc.collect()
 
             transitions = [[] for _ in range(self.batch_size)]
             for t in range(self.env.max_horizon):
@@ -338,6 +346,8 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             batch += simulated_transitions
 
         self.optimize(batch, preferences_indices, preference_probs, top_epsilon_quantile, i_epoch)
+        del batch, preferences_indices, preference_probs
+        gc.collect()
 
     def ask_for_preferences(self, top_epsilon_quantile, final_rewards, i_epoch):
         # unique_indexes = np.array([self.env.translations.index(x) for x in set(self.env.translations)])
@@ -426,7 +436,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                 preferences_indices += [id_left, id_right]
                 preference_probs += [1 / 2 * prob_left, 1 / 2 * prob_right]
 
-        return preferences_indices, torch_Tensor(preference_probs), simulated_rewards, simulated_transitions
+        return preferences_indices, preference_probs, simulated_rewards, simulated_transitions
 
     def simulate_trajectories(self, suggested_trajectories):
         nb_suggestions = len(suggested_trajectories)
@@ -523,7 +533,6 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         # Perform forward pass
         action_logits, _, _, other_predictions = self.policy.forward(state, h_in, c_in)
 
-        inputs_hat, score_estimations = other_predictions
         m = CategoricalMasked(logits=action_logits, masks=torch_BoolTensor(state['current_mask'].detach().numpy()))
 
         # compute log_probs
@@ -531,9 +540,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         entropy = m.entropy()
 
         # Compute loss
-        policy_loss = - torch_mul(log_probs - torch_log(human_probs), rewards - top_epsilon_quantile).mean()
-
-        entropy = m.entropy()
+        policy_loss = - torch_mul(log_probs - torch_log(torch_Tensor(human_probs)), rewards - top_epsilon_quantile).mean()
         loss = policy_loss.mean() - self.entropy_coeff * entropy.mean()
 
         # perform backprop
@@ -546,77 +553,6 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             self.writer.add_scalar('Losses/Loss', loss.detach().numpy(), i_epoch)
             self.writer.add_scalar('Losses/Policy Loss', policy_loss.sum().detach().numpy(), i_epoch)
 
-
-class PreferenceReinforceAlgorithm(PreferenceReinforceGUI):
-    def __init__(self, **kwargs):
-        super(PreferenceReinforceAlgorithm, self).__init__(**kwargs)
-
-        self.preferences = {}
-
-    def create_summary_writer(self):
-        return SummaryWriter(log_dir=self.writer_logdir,
-                             comment=f"Preference_Reinforce_experiment_{self.dataset}_{time.time()}")
-
-    def ask_for_preferences(self, top_epsilon_quantile, final_rewards, i_epoch):
-        unique_indexes = np.array([self.env.translations.index(x) for x in set(self.env.translations)])
-        top_indices = np.argwhere(final_rewards > top_epsilon_quantile)
-        indices_to_compare = np.intersect1d(top_indices, unique_indexes)
-        combinaisons_to_compare = random.choices(list(itertools.combinations(indices_to_compare, 2)), k=10)
-
-        preferences_indices = []
-        preference_probs = []
-        for combination_number_i, combinaison in enumerate(combinaisons_to_compare):
-            id_left, id_right = combinaison
-            expressions_data = [self.env.translations[id_left], self.env.translations[id_right]]
-            rewards_data = [self.final_rewards[id_left], self.final_rewards[id_right]]
-            prob_left = np.exp(self.final_rewards[id_left]) / (
-                        np.exp(self.final_rewards[id_right]) + np.exp(self.final_rewards[id_left]))
-            prob_right = np.exp(self.final_rewards[id_right]) / (
-                        np.exp(self.final_rewards[id_right]) + np.exp(self.final_rewards[id_left]))
-
-            correct_answer = False
-            while not correct_answer:
-                print()
-                print(f"Combination n°{combination_number_i}")
-                print(tabulate([expressions_data, rewards_data],
-                               headers=['Left Expression', 'Right Expression'],
-                               tablefmt="presto"))
-                input_text = 'Which one do you prefer ? \n' \
-                             '- "right" (or "r"),\n' \
-                             '- "left" (or "l"),\n' \
-                             '- "both" (or "b"), meaning it\'s a tie \n' \
-                             '- "none" (or"n"), meaning I can\'t tell \n' \
-                             'Answer : '
-                if (self.env.translations[id_right], self.env.translations[id_left]) in self.preferences.keys():
-                    input_text = f'Past preference in history : {self.preferences[(self.env.translations[id_right], self.env.translations[id_left])]}\n' + input_text
-                elif (self.env.translations[id_left], self.env.translations[id_right]) in self.preferences.keys():
-                    input_text = f'Past preference in history : {self.preferences[(self.env.translations[id_left], self.env.translations[id_right])]}\n' + input_text
-                answer = input(input_text)
-                if self.final_rewards[id_right] > self.final_rewards[id_left]:
-                    answer = 'r'
-                elif self.final_rewards[id_right] < self.final_rewards[id_left]:
-                    answer = "l"
-
-                if (answer == "right") or (answer == "r"):
-                    preferences_indices += [id_right]
-                    preference_probs += [prob_right]
-                    correct_answer = True
-                elif (answer == "left") or (answer == "l"):
-                    preferences_indices += [id_left]
-                    preference_probs += [prob_left]
-                    correct_answer = True
-                elif (answer == "both") or (answer == "b"):
-                    preferences_indices += [id_left, id_right]
-                    preference_probs += [1 / 2 * prob_left, 1 / 2 * prob_right]
-                    correct_answer = True
-                elif (answer == "none") or (answer == "n"):
-                    correct_answer = True
-                else:
-                    print("Incorrect answer")
-
-            if self.env.translations[id_right] > self.env.translations[id_left]:
-                self.preferences[(self.env.translations[id_right], self.env.translations[id_left])] = answer
-            else:
-                self.preferences[(self.env.translations[id_right], self.env.translations[id_left])] = answer
-
-        return preferences_indices, torch_Tensor(preference_probs), [], []
+        del action_logits, other_predictions, state, h_in, c_in, action, done, rewards, policy_loss, m, log_probs, \
+            entropy, loss, preference_probs, preferences_indices
+        gc.collect()

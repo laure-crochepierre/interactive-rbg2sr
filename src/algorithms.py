@@ -127,6 +127,7 @@ class BaseAlgorithm(ABC):
                 break
 
             self.optimize_model(batch, final_rewards, i_epoch=i_epoch)
+            del batch, final_rewards
             gc.collect()
 
     @abstractmethod
@@ -273,7 +274,7 @@ class ReinforceAlgorithm(BaseAlgorithm):
         self.optimizer.zero_grad()
 
         # Perform forward pass
-        action_logits, aaa, bbb, other_predictions = self.policy.forward(state, h_in, c_in)
+        action_logits, _, _, other_predictions = self.policy.forward(state, h_in, c_in)
         inputs_hat, score_estimations = other_predictions
         m = CategoricalMasked(logits=action_logits, masks=torch_BoolTensor(state['current_mask'].detach().numpy()))
 
@@ -292,14 +293,6 @@ class ReinforceAlgorithm(BaseAlgorithm):
 
         # sum up all the values of policy_losses and value_losses
         loss = policy_loss.mean() - self.entropy_coeff * entropy.mean() + 0.0001 * score_error
-        if self.policy.autoencoder:
-            ae_loss = 0
-            criterion = nn_MSELoss()
-            for k, state_k in state.items():
-                ae_loss += criterion(inputs_hat[k], state_k)
-
-            ae_loss /= len(list(state.keys()))
-            loss = (1 - self.policy.ae_coeff_loss) * loss + self.policy.ae_coeff_loss * ae_loss
 
         # perform backprop
         loss.backward()
@@ -311,10 +304,9 @@ class ReinforceAlgorithm(BaseAlgorithm):
             self.writer.add_scalar('Losses/Loss', loss.detach().numpy(), i_epoch)
             self.writer.add_scalar('Losses/Entropy Loss', entropy.mean().detach().numpy(), i_epoch)
             self.writer.add_scalar('Losses/Policy Loss', policy_loss.mean().detach().numpy(), i_epoch)
-            if self.policy.autoencoder:
-                self.writer.add_scalar('Losses/Autoencoder Loss', ae_loss.detach().numpy(), i_epoch)
-                self.writer.add_scalar('Losses/Weight a', self.policy.ae_coeff_loss.detach().numpy(), i_epoch)
 
+        del action_logits, _, other_predictions, score_estimation, inputs_hat
+        del state, h_in, c_in, action, done, rewards, policy_loss, m, log_probs, entropy, loss
         gc.collect()
 
     def get_bonus(self, total_rewards, total_log_probs, num_samples=0):
