@@ -9,6 +9,7 @@
 import gc
 import os
 import time
+import pickle
 import numpy as np
 
 import warnings
@@ -130,6 +131,16 @@ class BaseAlgorithm(ABC):
             del batch, final_rewards
             gc.collect()
 
+        self.store_results()
+
+    def store_results(self, file_name="final_results.pkl"):
+        final_results = {"logger": self.logger, "policy": self.policy}
+
+        results_path = os.path.join(self.writer_logdir, file_name)
+        pickle.dump(final_results, open(results_path, 'wb'))
+        del final_results
+        gc.collect()
+
     @abstractmethod
     @torch_inference_mode()
     def sample_episodes(self, i_epoch=0):
@@ -154,6 +165,7 @@ class ReinforceAlgorithm(BaseAlgorithm):
     def sample_episodes(self, i_epoch=0):
         batch = None
         final_rewards = None
+        i_batch = 0
         while batch is None:
 
             h_in = self.init_type((1, self.batch_size, self.env.hidden_size))
@@ -163,7 +175,13 @@ class ReinforceAlgorithm(BaseAlgorithm):
             past_done = torch_zeros((self.batch_size, 1))
             horizon = torch_ones((self.batch_size, 1))
 
+            if i_batch > 0:
+                del transitions
+                gc.collect()
+
             transitions = [[] for _ in range(self.batch_size)]
+            i_batch += 1
+
             for t in range(self.env.max_horizon):
                 # Select an action
 
@@ -268,6 +286,8 @@ class ReinforceAlgorithm(BaseAlgorithm):
         # Filter top trajectories
         state, h_in, c_in, action, done, rewards = filter_top_epsilon(batch, top_filter)
         if h_in == []:
+            del state, h_in, c_in, action, done, rewards
+            gc.collect()
             return
 
         # reset gradients

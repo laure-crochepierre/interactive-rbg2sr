@@ -94,7 +94,7 @@ app.layout = html.Div([
             dbc.Label('Reuse Preferences between interactive iterations ? ', html_for="reuse-input"),
             dcc.Dropdown(options=[{"label": "Yes", "value": "yes"},
                                   {"label": "No", "value": "no"}],
-                         value="yes", id="reuse-input"),
+                         value="no", id="reuse-input"),
             html.Br(),
             dbc.Label('Interaction Frequency', html_for="frequency-input"),
             dcc.Slider(min=1, max=50, step=1, value=5, tooltip={"placement": "bottom", "always_visible": True},

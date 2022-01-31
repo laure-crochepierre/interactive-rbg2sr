@@ -7,6 +7,7 @@
 # This file is part of the interactive-RBG2SR an interactive approach to reinforcement based grammar guided symbolic regression
 
 import gc
+import pickle
 import os
 import time
 import random
@@ -528,6 +529,8 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                                                                                     preferences_indices,
                                                                                     preference_probs)
         if h_in == []:
+            del state, h_in, c_in, action, done, rewards, preference_probs, preferences_indices
+            gc.collect()
             return
 
         # reset gradients
@@ -558,4 +561,15 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
 
         del action_logits, other_predictions, state, h_in, c_in, action, done, rewards, policy_loss, m, log_probs, \
             entropy, loss, preference_probs, preferences_indices
+        gc.collect()
+
+    def store_results(self, file_name="final_results.pkl"):
+        final_results = {"logger": self.logger, "policy": self.policy}
+        results_path = os.path.join(self.writer_logdir, file_name)
+        if self.user.dbx is None:
+            pickle.dump(final_results, open(results_path, 'wb'))
+
+        else:
+            self.user.dbx.files_upload(pickle.dumps(final_results), path=results_path)
+        del final_results
         gc.collect()

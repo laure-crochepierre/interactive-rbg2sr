@@ -26,6 +26,7 @@ class User(ABC):
         self.description = "Default User"
         self.preferences = None
         self.reuse = reuse
+        self.dbx = None
         self.interaction_frequency = interaction_frequency
 
     @staticmethod
@@ -42,7 +43,6 @@ class RealUser(User):
         self.type = "real"
         self.rules = None
 
-        self.dbx = None
         if os.environ.get("DROPBOX_ACCESS_TOKEN") is not None:
             self.dbx = dropbox.Dropbox(os.environ.get('DROPBOX_ACCESS_TOKEN'))
 
