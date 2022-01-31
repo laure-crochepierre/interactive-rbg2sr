@@ -305,7 +305,9 @@ class ReinforceAlgorithm(BaseAlgorithm):
             self.writer.add_scalar('Losses/Entropy Loss', entropy.mean().detach().numpy(), i_epoch)
             self.writer.add_scalar('Losses/Policy Loss', policy_loss.mean().detach().numpy(), i_epoch)
 
-        del action_logits, _, other_predictions, score_estimation, inputs_hat
+        if self.reward_prediction:
+            del score_estimation
+        del action_logits, _, other_predictions, inputs_hat, score_error, score_estimations
         del state, h_in, c_in, action, done, rewards, policy_loss, m, log_probs, entropy, loss
         gc.collect()
 
