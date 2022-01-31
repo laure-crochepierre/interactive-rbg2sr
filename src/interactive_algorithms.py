@@ -234,6 +234,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         gc.collect()
 
         self.past_trajectories = [[] for _ in range(self.batch_size)]
+        i_batch = 0
         while batch is None:
 
             h_in = self.init_type((1, self.batch_size, self.env.hidden_size))
@@ -243,11 +244,13 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             past_done = torch_zeros((self.batch_size, 1))
             horizon = torch_ones((self.batch_size, 1))
 
-            if transitions is not None:
+            if i_batch > 0:
                 del transitions
                 gc.collect()
 
             transitions = [[] for _ in range(self.batch_size)]
+            i_batch += 1
+
             for t in range(self.env.max_horizon):
                 # Select an action
 
