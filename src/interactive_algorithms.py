@@ -195,7 +195,6 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         super(PreferenceReinforceGUI, self).__init__(**kwargs)
         self.gui_data_path = os.path.join(self.writer_logdir, 'gui_data')
 
-        self.gui_answers = None
         self.user = user
 
         # params to store preferences
@@ -381,8 +380,6 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                          "rewards": final_rewards,
                          "translations": self.env.translations}
         gui_answers = self.user.select_preference(gui_infos, i_epoch)
-
-        self.gui_answers = gui_answers
         return self.use_preferences(gui_answers, final_rewards)
 
     def use_preferences(self, gui_answers, final_rewards):

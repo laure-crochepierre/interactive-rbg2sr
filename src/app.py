@@ -154,8 +154,40 @@ app.layout = html.Div([
                   ]),
                   dbc.Row(dbc.Col(html.Div(id='valider-et-continuer'), width={"size": 8, "offset": 2})),
               ], id="iteration_data")],
-             hidden=True, id="during-training", style={'margin': 25})
+             hidden=True, id="during-training", style={'margin': 25}),
+    dbc.Modal(
+        [
+            dbc.ModalHeader(dbc.ModalTitle("End of the training", id="training-end-modal-header")),
+            dbc.ModalBody("This is the content of the modal", id="training-end-modal-body")
+        ],
+        id="training-end-modal",
+        is_open=False,
+        centered=True
+    ),
 ])
+
+def show_modal_when_training_ends(gui_logdir):
+    if gui_logdir is not None:
+        logdir = gui_logdir.replace("gui_data", "")
+        if (os.environ.get("DROPBOX_ACCESS_TOKEN") is None) & ("final_results.pkl" in os.listdir(logdir)):
+
+            final_results = pickle.load(open(os.path.join(logdir, "final_results.pkl"), 'rb'))
+        else:
+            try :
+                dbx = dropbox.Dropbox(os.environ.get('DROPBOX_ACCESS_TOKEN'))
+                _, file_content = dbx.files_download(os.path.join(logdir, "final_results.pkl"))
+                final_results = pickle.loads(file_content.content)
+            except:
+                return dash.no_update, dash.no_update, dash.no_update
+
+        modal_header = f"Training ended with best results found at epoch {final_results['logger']['i_best_epoch']}"
+        modal_content = f"Best expression : {final_results['logger']['best_expression']} \n" \
+                        f"Reward : {final_results['logger']['best_reward']}"
+
+        print(modal_content, modal_header)
+        return modal_header, modal_content, True
+
+    return dash.no_update, dash.no_update, dash.no_update
 
 
 @app.callback([Output('offcanvas', "is_open")],
@@ -193,7 +225,10 @@ def is_canevas_hidden(hidden_iteration, hidden_before):
                Output("valider-et-continuer", "children"),
                Output("datatable", "selected_row_ids"),
                Output('visualize-expression-dropdown', 'options'),
-               Output('visualize-expression-graph', 'figure')
+               Output('visualize-expression-graph', 'figure'),
+               Output('training-end-modal-header', 'children'),
+               Output('training-end-modal-body', 'children'),
+               Output('training-end-modal', 'is_open')
                ],
               [Input('launch-training', 'n_clicks'),
                Input('interval-during-training', 'n_intervals'),
@@ -240,6 +275,9 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
     interval_disabled = dash.no_update
     visu_dropdown = dash.no_update
     visu_graph = dash.no_update
+    modal_header = dash.no_update
+    modal_content = dash.no_update
+    show_modal = dash.no_update
 
     top_ids = []
     middle_ids = []
@@ -252,6 +290,7 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
         low_ids = low_idss[-1]
 
     if (pid is not None) and (pid > 0) and not psutil.pid_exists(pid):
+        modal_header, modal_content, show_modal = show_modal_when_training_ends(logdir)
         try:
             pid = -1
             hidden_before = False
@@ -268,7 +307,7 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
 
         return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
                pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
-               continuer_box, selected_row_indices, visu_dropdown, visu_graph
+               continuer_box, selected_row_indices, visu_dropdown, visu_graph, modal_header, modal_content, show_modal
 
     ctx = dash.callback_context
     if ctx.triggered[0]['prop_id'] == "new_training.n_clicks":
@@ -333,7 +372,7 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
         if not isinstance(grammar, dict):
             return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
                    pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
-                   continuer_box, selected_row_indices, visu_dropdown, visu_graph
+                   continuer_box, selected_row_indices, visu_dropdown, visu_graph, modal_header, modal_content, show_modal
         expression = grammar['start_symbol']
         current_symbol = grammar['start_symbol']
         queue = []
@@ -425,18 +464,25 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
             hidden_during = False
             hidden_iteration_data = False
             hidden_waiter = True
+
     elif pid is None:
         hidden_before = False
+        modal_header = "Training has crashed"
+        modal_content = "We are using a free Heroku account with limited options. " \
+                        "The server is rebooting, you need to start a new training"
+        show_modal = True
         return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
                pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
-               continuer_box, selected_row_indices, visu_dropdown, visu_graph
+               continuer_box, selected_row_indices, visu_dropdown, visu_graph, modal_header, modal_content, show_modal
 
     hidden_before = not hidden_during
     hidden_waiter = not hidden_iteration_data
     gc.collect()
+
+    modal_header, modal_content, show_modal = show_modal_when_training_ends(logdir)
     return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
            pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
-           continuer_box, selected_row_indices, visu_dropdown, visu_graph
+           continuer_box, selected_row_indices, visu_dropdown, visu_graph, modal_header, modal_content, show_modal
 
 
 def callback_launch(dataset_value, grammar_value, frequency_value, interaction_type, reuse):
