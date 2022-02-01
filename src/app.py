@@ -184,7 +184,6 @@ def show_modal_when_training_ends(gui_logdir):
         modal_content = f"Best expression : {final_results['logger']['best_expression']} \n" \
                         f"Reward : {final_results['logger']['best_reward']}"
 
-        print(modal_content, modal_header)
         return modal_header, modal_content, True
 
     return dash.no_update, dash.no_update, dash.no_update
