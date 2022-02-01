@@ -169,11 +169,14 @@ app.layout = html.Div([
 def show_modal_when_training_ends(gui_logdir):
     if gui_logdir is not None:
         logdir = gui_logdir.replace("gui_data", "")
-        if (os.environ.get("DROPBOX_ACCESS_TOKEN") is None) & ("final_results.pkl" in os.listdir(logdir)):
+        if os.environ.get("DROPBOX_ACCESS_TOKEN") is None:
+            if "final_results.pkl" in os.listdir(logdir):
+                final_results = pickle.load(open(os.path.join(logdir, "final_results.pkl"), 'rb'))
+            else:
+                return dash.no_update, dash.no_update, dash.no_update
 
-            final_results = pickle.load(open(os.path.join(logdir, "final_results.pkl"), 'rb'))
         else:
-            try :
+            try:
                 dbx = dropbox.Dropbox(os.environ.get('DROPBOX_ACCESS_TOKEN'))
                 _, file_content = dbx.files_download(os.path.join(logdir, "final_results.pkl"))
                 final_results = pickle.loads(file_content.content)
