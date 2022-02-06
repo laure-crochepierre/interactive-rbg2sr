@@ -13,10 +13,9 @@ import pickle
 import psutil
 import signal
 import dropbox
-from sympy.parsing.sympy_parser import (parse_expr, function_exponentiation, implicit_application,
-                                        implicit_multiplication, standard_transformations)
+from sympy.parsing.sympy_parser import (parse_expr, standard_transformations)
+transformations = standard_transformations
 
-transformations = standard_transformations + (function_exponentiation, implicit_application, implicit_multiplication)
 import time
 import subprocess
 
@@ -166,10 +165,13 @@ app.layout = html.Div([
     ),
 ])
 
+
 def show_modal_when_training_ends(gui_logdir):
     if gui_logdir is not None:
         logdir = gui_logdir.replace("gui_data", "")
         if os.environ.get("DROPBOX_ACCESS_TOKEN") is None:
+            if not os.path.exists(logdir):
+                return dash.no_update, dash.no_update, dash.no_update
             if "final_results.pkl" in os.listdir(logdir):
                 final_results = pickle.load(open(os.path.join(logdir, "final_results.pkl"), 'rb'))
             else:
@@ -510,10 +512,11 @@ def expression_formating(t):
     if (t == '') or ('<' in t):
         return ''
 
+    t = t.replace(']]', ']').replace('x.columns[', ':,')
     t = t.replace('np.', '')
     for i in range(10):
         t = t.replace(f'x[:,{i}]', f"x{i}").replace(f'x[:, {i}]', f"x{i}")
-    t = parse_expr(t).__repr__()
+    t = parse_expr(t).__repr__().replace('/', ' / ')
     return t
 
 
@@ -585,14 +588,13 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
     if grammar is None:
         grammar = pairs_data['grammar']
 
-    translations = [t.replace(']]', ']').replace('x.columns[', ':,') for t in translations]
     translations = [expression_formating(t) for t in translations]
     top_expressions = sorted(list(set([translations[i] for i in top_indices])),
                              key=lambda t: rewards[translations.index(t)], reverse=True)
 
     table_data = [{'id': translations.index(t),
                    'Expression': t,
-                   'Reward': round(rewards[translations.index(t)], 2)}
+                   'Reward': round(rewards[translations.index(t)], 3)}
                   for t in top_expressions]
 
     if visu_dropdown_value is None:
@@ -616,6 +618,8 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
         r_left, r_right = round(rewards[id_left], 3), round(rewards[id_right], 3)
         t_left = translations[id_left]
         t_right = translations[id_right]
+        if t_right == t_left:
+            continue
 
         left_fig = go.Figure(data=[go.Scatter(x=x, y=y_pred[id_left], name="y_pred", mode='markers'),
                                    go.Scatter(x=x, y=y, name="y", mode='markers')],
@@ -630,8 +634,11 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
             # dbc.Row(dbc.Col([f"Score de récompense : ", html.Strong(r_left)])),
             dbc.Row(dbc.Col(dash_table.DataTable(
                 id=f'table-results-left-{i_pair}',
-                columns=([{'id': 'Reward', 'name': 'Reward'}] + [{'id': m, 'name': m} for m in metrics.keys()]),
-                data=[dict(Reward=r_left, **{name: round(m(y, y_pred[id_left]), 2) for name, m in metrics.items()})],
+                merge_duplicate_headers=True,
+                style_cell={'textAlign': 'center'},
+                columns=([{'id': 'Reward', 'name': ['Train', 'Reward']}] +
+                         [{'id': m, 'name': ["Test", m]} for m in metrics.keys()]),
+                data=[dict(Reward=r_left, **{name: round(m(y, y_pred[id_left]), 3) for name, m in metrics.items()})],
                 editable=False
             ))),
             dbc.Row(dbc.Col(dbc.Button("Choose",  # "Choisir",
@@ -647,8 +654,11 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
             dbc.Row(dbc.Col(dcc.Graph(figure=right_fig))),
             dbc.Row(dbc.Col(dash_table.DataTable(
                 id='table-editing-simple',
-                columns=([{'id': 'Reward', 'name': 'Reward'}] + [{'id': m, 'name': m} for m in metrics.keys()]),
-                data=[dict(Reward=r_right, **{name: round(m(y, y_pred[id_right]), 2) for name, m in metrics.items()})],
+                merge_duplicate_headers=True,
+                style_cell={'textAlign': 'center'},
+                columns=([{'id': 'Reward', 'name': ['Train', 'Reward']}] +
+                         [{'id': m, 'name': ["Test", m ]} for m in metrics.keys()]),
+                data=[dict(Reward=r_right, **{name: round(m(y, y_pred[id_right]), 3) for name, m in metrics.items()})],
                 editable=False
             ))),
             dbc.Row(dbc.Col(dbc.Button("Choose",  # "Choisir",
@@ -985,6 +995,7 @@ def pairs_by_classes(value_top, value_middle, value_low, top_regex_n_clicks, mid
         top_regex = regex_type_top
         if regex_value_top is not None:
             top_regex = regex_type_top.replace("STR", regex_value_top)
+            top_regex = top_regex.replace("*", "\*")
 
         filtered_top_ids = [row['id']
                             for row in table_data
@@ -999,6 +1010,8 @@ def pairs_by_classes(value_top, value_middle, value_low, top_regex_n_clicks, mid
         middle_regex = regex_type_middle
         if regex_value_middle is not None:
             middle_regex = regex_type_middle.replace("STR", regex_value_middle)
+            middle_regex = middle_regex.replace("*", "\*")
+
         filtered_middle_ids = [row['id']
                                for row in table_data
                                if (not row['id'] in value_top + value_middle + value_low)
@@ -1011,6 +1024,7 @@ def pairs_by_classes(value_top, value_middle, value_low, top_regex_n_clicks, mid
         low_regex = regex_type_low
         if regex_value_low is not None:
             low_regex = regex_type_low.replace("STR", regex_value_low)
+            low_regex = low_regex.replace("*", "\*")
 
         filtered_low_ids = [row['id']
                             for row in table_data

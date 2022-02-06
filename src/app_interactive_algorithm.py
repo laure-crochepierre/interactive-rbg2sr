@@ -43,7 +43,6 @@ def launch_training(writer_logdir="./test", dataset_value="nguyen4", grammar_wit
 
     user_kwargs = {'reuse': reuse,
                    'interaction_frequency': frequency_value}
-    params['algo_kwargs']['risk_eps'] /= user_kwargs['interaction_frequency']
 
     model = PreferenceReinforceGUI(env_class=BatchSymbolicRegressionEnv,
                                    writer_logdir=writer_logdir,

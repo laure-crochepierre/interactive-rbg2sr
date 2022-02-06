@@ -420,7 +420,9 @@ class BatchSymbolicRegressionEnv(gym.Env):
                 if isinstance(x, pd.DataFrame) & self.use_np:
                     x = x.values
                 y_pred = eval(t)
-                y_pred[np.isnan(y_pred)] = 0
+                if isinstance(y_pred, np.float64) or isinstance(y_pred, int):
+                    return np.zeros((len(self.y_test)))
+                y_pred = np.nan_to_num(y_pred)
             except Exception as e:
                 return np.zeros((len(self.y_test)))
         return y_pred
