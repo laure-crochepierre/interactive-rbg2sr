@@ -13,10 +13,9 @@ import pickle
 import psutil
 import signal
 import dropbox
-from sympy.parsing.sympy_parser import (parse_expr, function_exponentiation, implicit_application,
-                                        implicit_multiplication, standard_transformations)
+from sympy.parsing.sympy_parser import (parse_expr, standard_transformations)
+transformations = standard_transformations
 
-transformations = standard_transformations + (function_exponentiation, implicit_application, implicit_multiplication)
 import time
 import subprocess
 
@@ -85,16 +84,16 @@ app.layout = html.Div([
                          value="without",
                          id="grammar-input"),
             html.Br(),
-            dbc.Label('Interaction Type', html_for="type-input", style="display: none"),
+            dbc.Label('Interaction Type', html_for="type-input", style={'display': 'none'}),
             dcc.Dropdown(options=[{"label": "From the start", "value": "from_start"},
                                   {"label": "On plateau", "value": "on_plateau"}],
-                         value="from_start", id="type-input", style="display: none",
+                         value="from_start", id="type-input", style={'display': 'none'},
                          disabled=True),
-            html.Br(style="display: none"),
+            #html.Br(style="display: none"),
             dbc.Label('Reuse Preferences between interactive iterations ? ', html_for="reuse-input"),
             dcc.Dropdown(options=[{"label": "Yes", "value": "yes"},
                                   {"label": "No", "value": "no"}],
-                         value="yes", id="reuse-input"),
+                         value="no", id="reuse-input"),
             html.Br(),
             dbc.Label('Interaction Frequency', html_for="frequency-input"),
             dcc.Slider(min=1, max=50, step=1, value=5, tooltip={"placement": "bottom", "always_visible": True},
@@ -154,8 +153,45 @@ app.layout = html.Div([
                   ]),
                   dbc.Row(dbc.Col(html.Div(id='valider-et-continuer'), width={"size": 8, "offset": 2})),
               ], id="iteration_data")],
-             hidden=True, id="during-training", style={'margin': 25})
+             hidden=True, id="during-training", style={'margin': 25}),
+    dbc.Modal(
+        [
+            dbc.ModalHeader(dbc.ModalTitle("End of the training", id="training-end-modal-header")),
+            dbc.ModalBody("This is the content of the modal", id="training-end-modal-body")
+        ],
+        id="training-end-modal",
+        is_open=False,
+        centered=True
+    ),
 ])
+
+
+def show_modal_when_training_ends(gui_logdir):
+    if gui_logdir is not None:
+        logdir = gui_logdir.replace("gui_data", "")
+        if os.environ.get("DROPBOX_ACCESS_TOKEN") is None:
+            if not os.path.exists(logdir):
+                return dash.no_update, dash.no_update, dash.no_update
+            if "final_results.pkl" in os.listdir(logdir):
+                final_results = pickle.load(open(os.path.join(logdir, "final_results.pkl"), 'rb'))
+            else:
+                return dash.no_update, dash.no_update, dash.no_update
+
+        else:
+            try:
+                dbx = dropbox.Dropbox(os.environ.get('DROPBOX_ACCESS_TOKEN'))
+                _, file_content = dbx.files_download(os.path.join(logdir, "final_results.pkl"))
+                final_results = pickle.loads(file_content.content)
+            except:
+                return dash.no_update, dash.no_update, dash.no_update
+
+        modal_header = f"Training ended with best results found at epoch {final_results['logger']['i_best_epoch']}"
+        modal_content = f"Best expression : {final_results['logger']['best_expression']} \n" \
+                        f"Reward : {final_results['logger']['best_reward']}"
+
+        return modal_header, modal_content, True
+
+    return dash.no_update, dash.no_update, dash.no_update
 
 
 @app.callback([Output('offcanvas', "is_open")],
@@ -193,7 +229,10 @@ def is_canevas_hidden(hidden_iteration, hidden_before):
                Output("valider-et-continuer", "children"),
                Output("datatable", "selected_row_ids"),
                Output('visualize-expression-dropdown', 'options'),
-               Output('visualize-expression-graph', 'figure')
+               Output('visualize-expression-graph', 'figure'),
+               Output('training-end-modal-header', 'children'),
+               Output('training-end-modal-body', 'children'),
+               Output('training-end-modal', 'is_open')
                ],
               [Input('launch-training', 'n_clicks'),
                Input('interval-during-training', 'n_intervals'),
@@ -240,6 +279,9 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
     interval_disabled = dash.no_update
     visu_dropdown = dash.no_update
     visu_graph = dash.no_update
+    modal_header = dash.no_update
+    modal_content = dash.no_update
+    show_modal = dash.no_update
 
     top_ids = []
     middle_ids = []
@@ -252,6 +294,7 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
         low_ids = low_idss[-1]
 
     if (pid is not None) and (pid > 0) and not psutil.pid_exists(pid):
+        modal_header, modal_content, show_modal = show_modal_when_training_ends(logdir)
         try:
             pid = -1
             hidden_before = False
@@ -268,7 +311,7 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
 
         return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
                pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
-               continuer_box, selected_row_indices, visu_dropdown, visu_graph
+               continuer_box, selected_row_indices, visu_dropdown, visu_graph, modal_header, modal_content, show_modal
 
     ctx = dash.callback_context
     if ctx.triggered[0]['prop_id'] == "new_training.n_clicks":
@@ -333,7 +376,7 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
         if not isinstance(grammar, dict):
             return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
                    pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
-                   continuer_box, selected_row_indices, visu_dropdown, visu_graph
+                   continuer_box, selected_row_indices, visu_dropdown, visu_graph, modal_header, modal_content, show_modal
         expression = grammar['start_symbol']
         current_symbol = grammar['start_symbol']
         queue = []
@@ -425,18 +468,25 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
             hidden_during = False
             hidden_iteration_data = False
             hidden_waiter = True
+
     elif pid is None:
         hidden_before = False
+        modal_header = "Training has crashed"
+        modal_content = "We are using a free Heroku account with limited options. " \
+                        "The server is rebooting, you need to start a new training"
+        show_modal = True
         return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
                pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
-               continuer_box, selected_row_indices, visu_dropdown, visu_graph
+               continuer_box, selected_row_indices, visu_dropdown, visu_graph, modal_header, modal_content, show_modal
 
     hidden_before = not hidden_during
     hidden_waiter = not hidden_iteration_data
     gc.collect()
+
+    modal_header, modal_content, show_modal = show_modal_when_training_ends(logdir)
     return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
            pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
-           continuer_box, selected_row_indices, visu_dropdown, visu_graph
+           continuer_box, selected_row_indices, visu_dropdown, visu_graph, modal_header, modal_content, show_modal
 
 
 def callback_launch(dataset_value, grammar_value, frequency_value, interaction_type, reuse):
@@ -462,10 +512,11 @@ def expression_formating(t):
     if (t == '') or ('<' in t):
         return ''
 
+    t = t.replace(']]', ']').replace('x.columns[', ':,')
     t = t.replace('np.', '')
     for i in range(10):
         t = t.replace(f'x[:,{i}]', f"x{i}").replace(f'x[:, {i}]', f"x{i}")
-    t = parse_expr(t).__repr__()
+    t = parse_expr(t).__repr__().replace('/', ' / ')
     return t
 
 
@@ -537,14 +588,13 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
     if grammar is None:
         grammar = pairs_data['grammar']
 
-    translations = [t.replace(']]', ']').replace('x.columns[', ':,') for t in translations]
     translations = [expression_formating(t) for t in translations]
     top_expressions = sorted(list(set([translations[i] for i in top_indices])),
                              key=lambda t: rewards[translations.index(t)], reverse=True)
 
     table_data = [{'id': translations.index(t),
                    'Expression': t,
-                   'Reward': round(rewards[translations.index(t)], 2)}
+                   'Reward': round(rewards[translations.index(t)], 3)}
                   for t in top_expressions]
 
     if visu_dropdown_value is None:
@@ -568,6 +618,8 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
         r_left, r_right = round(rewards[id_left], 3), round(rewards[id_right], 3)
         t_left = translations[id_left]
         t_right = translations[id_right]
+        if t_right == t_left:
+            continue
 
         left_fig = go.Figure(data=[go.Scatter(x=x, y=y_pred[id_left], name="y_pred", mode='markers'),
                                    go.Scatter(x=x, y=y, name="y", mode='markers')],
@@ -582,8 +634,11 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
             # dbc.Row(dbc.Col([f"Score de récompense : ", html.Strong(r_left)])),
             dbc.Row(dbc.Col(dash_table.DataTable(
                 id=f'table-results-left-{i_pair}',
-                columns=([{'id': 'Reward', 'name': 'Reward'}] + [{'id': m, 'name': m} for m in metrics.keys()]),
-                data=[dict(Reward=r_left, **{name: round(m(y, y_pred[id_left]), 2) for name, m in metrics.items()})],
+                merge_duplicate_headers=True,
+                style_cell={'textAlign': 'center'},
+                columns=([{'id': 'Reward', 'name': ['Train', 'Reward']}] +
+                         [{'id': m, 'name': ["Test", m]} for m in metrics.keys()]),
+                data=[dict(Reward=r_left, **{name: round(m(y, y_pred[id_left]), 3) for name, m in metrics.items()})],
                 editable=False
             ))),
             dbc.Row(dbc.Col(dbc.Button("Choose",  # "Choisir",
@@ -599,8 +654,11 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
             dbc.Row(dbc.Col(dcc.Graph(figure=right_fig))),
             dbc.Row(dbc.Col(dash_table.DataTable(
                 id='table-editing-simple',
-                columns=([{'id': 'Reward', 'name': 'Reward'}] + [{'id': m, 'name': m} for m in metrics.keys()]),
-                data=[dict(Reward=r_right, **{name: round(m(y, y_pred[id_right]), 2) for name, m in metrics.items()})],
+                merge_duplicate_headers=True,
+                style_cell={'textAlign': 'center'},
+                columns=([{'id': 'Reward', 'name': ['Train', 'Reward']}] +
+                         [{'id': m, 'name': ["Test", m ]} for m in metrics.keys()]),
+                data=[dict(Reward=r_right, **{name: round(m(y, y_pred[id_right]), 3) for name, m in metrics.items()})],
                 editable=False
             ))),
             dbc.Row(dbc.Col(dbc.Button("Choose",  # "Choisir",
@@ -937,6 +995,7 @@ def pairs_by_classes(value_top, value_middle, value_low, top_regex_n_clicks, mid
         top_regex = regex_type_top
         if regex_value_top is not None:
             top_regex = regex_type_top.replace("STR", regex_value_top)
+            top_regex = top_regex.replace("*", "\*")
 
         filtered_top_ids = [row['id']
                             for row in table_data
@@ -951,6 +1010,8 @@ def pairs_by_classes(value_top, value_middle, value_low, top_regex_n_clicks, mid
         middle_regex = regex_type_middle
         if regex_value_middle is not None:
             middle_regex = regex_type_middle.replace("STR", regex_value_middle)
+            middle_regex = middle_regex.replace("*", "\*")
+
         filtered_middle_ids = [row['id']
                                for row in table_data
                                if (not row['id'] in value_top + value_middle + value_low)
@@ -963,6 +1024,7 @@ def pairs_by_classes(value_top, value_middle, value_low, top_regex_n_clicks, mid
         low_regex = regex_type_low
         if regex_value_low is not None:
             low_regex = regex_type_low.replace("STR", regex_value_low)
+            low_regex = low_regex.replace("*", "\*")
 
         filtered_low_ids = [row['id']
                             for row in table_data

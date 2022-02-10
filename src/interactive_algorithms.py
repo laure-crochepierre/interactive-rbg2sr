@@ -6,6 +6,8 @@
 # SPDX-License-Identifier: MPL-2.0
 # This file is part of the interactive-RBG2SR an interactive approach to reinforcement based grammar guided symbolic regression
 
+import gc
+import pickle
 import os
 import time
 import random
@@ -193,7 +195,6 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         super(PreferenceReinforceGUI, self).__init__(**kwargs)
         self.gui_data_path = os.path.join(self.writer_logdir, 'gui_data')
 
-        self.gui_answers = None
         self.user = user
 
         # params to store preferences
@@ -228,7 +229,12 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             print(f'Epoch n° {i_epoch}: sample new trajectories')
         batch = None
         final_rewards = None
+
+        del self.past_trajectories
+        gc.collect()
+
         self.past_trajectories = [[] for _ in range(self.batch_size)]
+        i_batch = 0
         while batch is None:
 
             h_in = self.init_type((1, self.batch_size, self.env.hidden_size))
@@ -238,7 +244,13 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             past_done = torch_zeros((self.batch_size, 1))
             horizon = torch_ones((self.batch_size, 1))
 
+            if i_batch > 0:
+                del transitions
+                gc.collect()
+
             transitions = [[] for _ in range(self.batch_size)]
+            i_batch += 1
+
             for t in range(self.env.max_horizon):
                 # Select an action
 
@@ -322,6 +334,8 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             if self.verbose:
                 print('Use preferences')
             self.optimize_model_with_preference(batch, final_rewards, i_epoch)
+        del batch
+        gc.collect()
 
     def optimize_model_with_preference(self, batch, final_rewards, i_epoch):
         top_epsilon_quantile = np.quantile(final_rewards, 1 - self.risk_eps)
@@ -335,6 +349,8 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             batch += simulated_transitions
 
         self.optimize(batch, preferences_indices, preference_probs, top_epsilon_quantile, i_epoch)
+        del batch, preferences_indices, preference_probs
+        gc.collect()
 
     def ask_for_preferences(self, top_epsilon_quantile, final_rewards, i_epoch):
         # unique_indexes = np.array([self.env.translations.index(x) for x in set(self.env.translations)])
@@ -362,10 +378,14 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         else:
             gui_infos = {"combinaisons": combinaisons_to_compare,
                          "rewards": final_rewards,
+                         "top_indices": top_indices,
                          "translations": self.env.translations}
         gui_answers = self.user.select_preference(gui_infos, i_epoch)
-
-        self.gui_answers = gui_answers
+        if 'good_percent' in gui_answers.keys():
+            self.writer.add_scalar('Rules stats/Good Ratio', gui_answers['good_percent'], i_epoch)
+            self.writer.add_scalar('Rules stats/Bad Ratio', gui_answers['bad_percent'], i_epoch)
+            self.writer.add_scalar('Rules stats/All Good Ratio', gui_answers['all_good_percent'], i_epoch)
+            self.writer.add_scalar('Rules stats/All Bad Ratio', gui_answers['all_bad_percent'], i_epoch)
         return self.use_preferences(gui_answers, final_rewards)
 
     def use_preferences(self, gui_answers, final_rewards):
@@ -414,16 +434,16 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                         np.exp(final_rewards[id_right]) + np.exp(final_rewards[id_left]))
 
             if (answer == "right") or (answer == "r"):
-                preferences_indices += [id_right]
-                preference_probs += [prob_right]
+                preferences_indices += [id_left, id_right]
+                preference_probs += [-1, 1]
             elif (answer == "left") or (answer == "l"):
-                preferences_indices += [id_left]
-                preference_probs += [prob_left]
+                preferences_indices += [id_left, id_right]
+                preference_probs += [1, -1]
             elif (answer == "both") or (answer == "b"):
                 preferences_indices += [id_left, id_right]
-                preference_probs += [1 / 2 * prob_left, 1 / 2 * prob_right]
+                preference_probs += [1, 1]
 
-        return preferences_indices, torch_Tensor(preference_probs), simulated_rewards, simulated_transitions
+        return preferences_indices, preference_probs, simulated_rewards, simulated_transitions
 
     def simulate_trajectories(self, suggested_trajectories):
         nb_suggestions = len(suggested_trajectories)
@@ -512,6 +532,8 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                                                                                     preferences_indices,
                                                                                     preference_probs)
         if h_in == []:
+            del state, h_in, c_in, action, done, rewards, preference_probs, preferences_indices
+            gc.collect()
             return
 
         # reset gradients
@@ -520,7 +542,6 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         # Perform forward pass
         action_logits, _, _, other_predictions = self.policy.forward(state, h_in, c_in)
 
-        inputs_hat, score_estimations = other_predictions
         m = CategoricalMasked(logits=action_logits, masks=torch_BoolTensor(state['current_mask'].detach().numpy()))
 
         # compute log_probs
@@ -528,9 +549,9 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         entropy = m.entropy()
 
         # Compute loss
-        policy_loss = - torch_mul(log_probs - torch_log(human_probs), rewards - top_epsilon_quantile).mean()
+        policy_loss = - torch_mul(log_probs, torch_mul(human_probs, rewards - top_epsilon_quantile)).mean()
+        #policy_loss = - torch_mul(log_probs, rewards - top_epsilon_quantile).mean()
 
-        entropy = m.entropy()
         loss = policy_loss.mean() - self.entropy_coeff * entropy.mean()
 
         # perform backprop
@@ -543,77 +564,17 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             self.writer.add_scalar('Losses/Loss', loss.detach().numpy(), i_epoch)
             self.writer.add_scalar('Losses/Policy Loss', policy_loss.sum().detach().numpy(), i_epoch)
 
+        del action_logits, other_predictions, state, h_in, c_in, action, done, rewards, policy_loss, m, log_probs, \
+            entropy, loss, preference_probs, preferences_indices, _
+        gc.collect()
 
-class PreferenceReinforceAlgorithm(PreferenceReinforceGUI):
-    def __init__(self, **kwargs):
-        super(PreferenceReinforceAlgorithm, self).__init__(**kwargs)
+    def store_results(self, file_name="final_results.pkl"):
+        final_results = {"logger": self.logger, "policy": self.policy}
+        results_path = os.path.join(self.writer_logdir, file_name)
+        if self.user.dbx is None:
+            pickle.dump(final_results, open(results_path, 'wb'))
 
-        self.preferences = {}
-
-    def create_summary_writer(self):
-        return SummaryWriter(log_dir=self.writer_logdir,
-                             comment=f"Preference_Reinforce_experiment_{self.dataset}_{time.time()}")
-
-    def ask_for_preferences(self, top_epsilon_quantile, final_rewards, i_epoch):
-        unique_indexes = np.array([self.env.translations.index(x) for x in set(self.env.translations)])
-        top_indices = np.argwhere(final_rewards > top_epsilon_quantile)
-        indices_to_compare = np.intersect1d(top_indices, unique_indexes)
-        combinaisons_to_compare = random.choices(list(itertools.combinations(indices_to_compare, 2)), k=10)
-
-        preferences_indices = []
-        preference_probs = []
-        for combination_number_i, combinaison in enumerate(combinaisons_to_compare):
-            id_left, id_right = combinaison
-            expressions_data = [self.env.translations[id_left], self.env.translations[id_right]]
-            rewards_data = [self.final_rewards[id_left], self.final_rewards[id_right]]
-            prob_left = np.exp(self.final_rewards[id_left]) / (
-                        np.exp(self.final_rewards[id_right]) + np.exp(self.final_rewards[id_left]))
-            prob_right = np.exp(self.final_rewards[id_right]) / (
-                        np.exp(self.final_rewards[id_right]) + np.exp(self.final_rewards[id_left]))
-
-            correct_answer = False
-            while not correct_answer:
-                print()
-                print(f"Combination n°{combination_number_i}")
-                print(tabulate([expressions_data, rewards_data],
-                               headers=['Left Expression', 'Right Expression'],
-                               tablefmt="presto"))
-                input_text = 'Which one do you prefer ? \n' \
-                             '- "right" (or "r"),\n' \
-                             '- "left" (or "l"),\n' \
-                             '- "both" (or "b"), meaning it\'s a tie \n' \
-                             '- "none" (or"n"), meaning I can\'t tell \n' \
-                             'Answer : '
-                if (self.env.translations[id_right], self.env.translations[id_left]) in self.preferences.keys():
-                    input_text = f'Past preference in history : {self.preferences[(self.env.translations[id_right], self.env.translations[id_left])]}\n' + input_text
-                elif (self.env.translations[id_left], self.env.translations[id_right]) in self.preferences.keys():
-                    input_text = f'Past preference in history : {self.preferences[(self.env.translations[id_left], self.env.translations[id_right])]}\n' + input_text
-                answer = input(input_text)
-                if self.final_rewards[id_right] > self.final_rewards[id_left]:
-                    answer = 'r'
-                elif self.final_rewards[id_right] < self.final_rewards[id_left]:
-                    answer = "l"
-
-                if (answer == "right") or (answer == "r"):
-                    preferences_indices += [id_right]
-                    preference_probs += [prob_right]
-                    correct_answer = True
-                elif (answer == "left") or (answer == "l"):
-                    preferences_indices += [id_left]
-                    preference_probs += [prob_left]
-                    correct_answer = True
-                elif (answer == "both") or (answer == "b"):
-                    preferences_indices += [id_left, id_right]
-                    preference_probs += [1 / 2 * prob_left, 1 / 2 * prob_right]
-                    correct_answer = True
-                elif (answer == "none") or (answer == "n"):
-                    correct_answer = True
-                else:
-                    print("Incorrect answer")
-
-            if self.env.translations[id_right] > self.env.translations[id_left]:
-                self.preferences[(self.env.translations[id_right], self.env.translations[id_left])] = answer
-            else:
-                self.preferences[(self.env.translations[id_right], self.env.translations[id_left])] = answer
-
-        return preferences_indices, torch_Tensor(preference_probs), [], []
+        else:
+            self.user.dbx.files_upload(pickle.dumps(final_results), path=results_path)
+        del final_results
+        gc.collect()

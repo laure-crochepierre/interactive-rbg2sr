@@ -6,8 +6,10 @@
 # SPDX-License-Identifier: MPL-2.0
 # This file is part of the interactive-RBG2SR an interactive approach to reinforcement based grammar guided symbolic regression
 
+import gc
 import os
 import time
+import pickle
 import numpy as np
 
 import warnings
@@ -126,6 +128,18 @@ class BaseAlgorithm(ABC):
                 break
 
             self.optimize_model(batch, final_rewards, i_epoch=i_epoch)
+            del batch, final_rewards
+            gc.collect()
+
+        self.store_results()
+
+    def store_results(self, file_name="final_results.pkl"):
+        final_results = {"logger": self.logger, "policy": self.policy}
+
+        results_path = os.path.join(self.writer_logdir, file_name)
+        pickle.dump(final_results, open(results_path, 'wb'))
+        del final_results
+        gc.collect()
 
     @abstractmethod
     @torch_inference_mode()
@@ -151,6 +165,7 @@ class ReinforceAlgorithm(BaseAlgorithm):
     def sample_episodes(self, i_epoch=0):
         batch = None
         final_rewards = None
+        i_batch = 0
         while batch is None:
 
             h_in = self.init_type((1, self.batch_size, self.env.hidden_size))
@@ -160,7 +175,13 @@ class ReinforceAlgorithm(BaseAlgorithm):
             past_done = torch_zeros((self.batch_size, 1))
             horizon = torch_ones((self.batch_size, 1))
 
+            if i_batch > 0:
+                del transitions
+                gc.collect()
+
             transitions = [[] for _ in range(self.batch_size)]
+            i_batch += 1
+
             for t in range(self.env.max_horizon):
                 # Select an action
 
@@ -265,13 +286,15 @@ class ReinforceAlgorithm(BaseAlgorithm):
         # Filter top trajectories
         state, h_in, c_in, action, done, rewards = filter_top_epsilon(batch, top_filter)
         if h_in == []:
+            del state, h_in, c_in, action, done, rewards
+            gc.collect()
             return
 
         # reset gradients
         self.optimizer.zero_grad()
 
         # Perform forward pass
-        action_logits, aaa, bbb, other_predictions = self.policy.forward(state, h_in, c_in)
+        action_logits, _, _, other_predictions = self.policy.forward(state, h_in, c_in)
         inputs_hat, score_estimations = other_predictions
         m = CategoricalMasked(logits=action_logits, masks=torch_BoolTensor(state['current_mask'].detach().numpy()))
 
@@ -290,14 +313,6 @@ class ReinforceAlgorithm(BaseAlgorithm):
 
         # sum up all the values of policy_losses and value_losses
         loss = policy_loss.mean() - self.entropy_coeff * entropy.mean() + 0.0001 * score_error
-        if self.policy.autoencoder:
-            ae_loss = 0
-            criterion = nn_MSELoss()
-            for k, state_k in state.items():
-                ae_loss += criterion(inputs_hat[k], state_k)
-
-            ae_loss /= len(list(state.keys()))
-            loss = (1 - self.policy.ae_coeff_loss) * loss + self.policy.ae_coeff_loss * ae_loss
 
         # perform backprop
         loss.backward()
@@ -309,9 +324,12 @@ class ReinforceAlgorithm(BaseAlgorithm):
             self.writer.add_scalar('Losses/Loss', loss.detach().numpy(), i_epoch)
             self.writer.add_scalar('Losses/Entropy Loss', entropy.mean().detach().numpy(), i_epoch)
             self.writer.add_scalar('Losses/Policy Loss', policy_loss.mean().detach().numpy(), i_epoch)
-            if self.policy.autoencoder:
-                self.writer.add_scalar('Losses/Autoencoder Loss', ae_loss.detach().numpy(), i_epoch)
-                self.writer.add_scalar('Losses/Weight a', self.policy.ae_coeff_loss.detach().numpy(), i_epoch)
+
+        if self.reward_prediction:
+            del score_estimation
+        del action_logits, _, other_predictions, inputs_hat, score_error, score_estimations
+        del state, h_in, c_in, action, done, rewards, policy_loss, m, log_probs, entropy, loss
+        gc.collect()
 
     def get_bonus(self, total_rewards, total_log_probs, num_samples=0):
         return 0
