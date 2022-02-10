@@ -378,8 +378,14 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         else:
             gui_infos = {"combinaisons": combinaisons_to_compare,
                          "rewards": final_rewards,
+                         "top_indices": top_indices,
                          "translations": self.env.translations}
         gui_answers = self.user.select_preference(gui_infos, i_epoch)
+        if 'good_percent' in gui_answers.keys():
+            self.writer.add_scalar('Rules stats/Good Ratio', gui_answers['good_percent'], i_epoch)
+            self.writer.add_scalar('Rules stats/Bad Ratio', gui_answers['bad_percent'], i_epoch)
+            self.writer.add_scalar('Rules stats/All Good Ratio', gui_answers['all_good_percent'], i_epoch)
+            self.writer.add_scalar('Rules stats/All Bad Ratio', gui_answers['all_bad_percent'], i_epoch)
         return self.use_preferences(gui_answers, final_rewards)
 
     def use_preferences(self, gui_answers, final_rewards):
@@ -428,14 +434,14 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                         np.exp(final_rewards[id_right]) + np.exp(final_rewards[id_left]))
 
             if (answer == "right") or (answer == "r"):
-                preferences_indices += [id_right]
-                preference_probs += [prob_right]
+                preferences_indices += [id_left, id_right]
+                preference_probs += [-1, 1]
             elif (answer == "left") or (answer == "l"):
-                preferences_indices += [id_left]
-                preference_probs += [prob_left]
+                preferences_indices += [id_left, id_right]
+                preference_probs += [1, -1]
             elif (answer == "both") or (answer == "b"):
                 preferences_indices += [id_left, id_right]
-                preference_probs += [1 / 2 * prob_left, 1 / 2 * prob_right]
+                preference_probs += [1, 1]
 
         return preferences_indices, preference_probs, simulated_rewards, simulated_transitions
 
@@ -543,7 +549,9 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         entropy = m.entropy()
 
         # Compute loss
-        policy_loss = - torch_mul(log_probs - torch_log(torch_Tensor(human_probs)), rewards - top_epsilon_quantile).mean()
+        policy_loss = - torch_mul(log_probs, torch_mul(human_probs, rewards - top_epsilon_quantile)).mean()
+        #policy_loss = - torch_mul(log_probs, rewards - top_epsilon_quantile).mean()
+
         loss = policy_loss.mean() - self.entropy_coeff * entropy.mean()
 
         # perform backprop
@@ -557,7 +565,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             self.writer.add_scalar('Losses/Policy Loss', policy_loss.sum().detach().numpy(), i_epoch)
 
         del action_logits, other_predictions, state, h_in, c_in, action, done, rewards, policy_loss, m, log_probs, \
-            entropy, loss, preference_probs, preferences_indices
+            entropy, loss, preference_probs, preferences_indices, _
         gc.collect()
 
     def store_results(self, file_name="final_results.pkl"):

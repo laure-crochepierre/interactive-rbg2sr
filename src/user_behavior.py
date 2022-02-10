@@ -9,6 +9,7 @@
 import os
 import copy
 import random
+import re
 import time
 import pickle
 import dropbox
@@ -143,5 +144,49 @@ class SelectRewardWithProbUser(User):
                                                                        rewards[i1] < rewards[i2])]
                                 for i1, i2 in gui_infos['combinaisons']])
             simulated_answers['pairs']['answers'] = answers
+            self.preferences = simulated_answers
+        return self.preferences
+
+
+class SelectByRegexUser(User):
+    def __init__(self, bad_rule="^[^ls]+$", **kwargs):
+        super(SelectByRegexUser, self).__init__(**kwargs)
+        self.description = "User who always select the solution with the highest reward"
+        self.type = "regex"
+        self.bad_rule = bad_rule
+
+    def select_preference(self, gui_infos, i_epoch):
+        if (not self.reuse) or (i_epoch % self.interaction_frequency == 0):
+            goods = []
+            bads = []
+            for i in gui_infos['top_indices']:
+                if len(re.findall(self.bad_rule, gui_infos['translations'][i])) == 0:
+                    bads.append(i)
+                else:
+                    goods.append(i)
+
+            combinaisons = []
+            answers = []
+            for i_good in goods:
+                combinaisons += [(i_good, j) for j in bads]
+                answers += ['l']
+
+            simulated_answers = copy.deepcopy(self.default_answer)
+            simulated_answers['pairs']['ids'] = combinaisons
+
+            simulated_answers['pairs']['answers'] = answers
+            simulated_answers['good_percent'] = len(goods) / (len(goods) + len(bads)) * 100
+            simulated_answers['bad_percent'] = len(bads) / (len(goods) + len(bads)) * 100
+
+            all_good = 0
+            all_bad = 0
+            for t in gui_infos['translations']:
+                if len(re.findall(self.bad_rule, t)) == 0:
+                    all_bad += 1
+                else:
+                    all_good += 1
+            simulated_answers['all_good_percent'] = all_good / (all_bad + all_good) * 100
+            simulated_answers['all_bad_percent'] = all_bad / (all_bad + all_good) * 100
+
             self.preferences = simulated_answers
         return self.preferences
