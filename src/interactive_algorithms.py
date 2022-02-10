@@ -334,7 +334,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             if self.verbose:
                 print('Use preferences')
             self.optimize_model_with_preference(batch, final_rewards, i_epoch)
-        del batch
+        del batch, final_rewards
         gc.collect()
 
     def optimize_model_with_preference(self, batch, final_rewards, i_epoch):
@@ -349,7 +349,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             batch += simulated_transitions
 
         self.optimize(batch, preferences_indices, preference_probs, top_epsilon_quantile, i_epoch)
-        del batch, preferences_indices, preference_probs
+        del batch, preferences_indices, preference_probs, simulated_rewards, simulated_transitions
         gc.collect()
 
     def ask_for_preferences(self, top_epsilon_quantile, final_rewards, i_epoch):
@@ -532,7 +532,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                                                                                     preferences_indices,
                                                                                     preference_probs)
         if h_in == []:
-            del state, h_in, c_in, action, done, rewards, preference_probs, preferences_indices
+            del state, h_in, c_in, action, done, rewards, preference_probs, preferences_indices, human_probs, batch
             gc.collect()
             return
 
@@ -565,7 +565,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             self.writer.add_scalar('Losses/Policy Loss', policy_loss.sum().detach().numpy(), i_epoch)
 
         del action_logits, other_predictions, state, h_in, c_in, action, done, rewards, policy_loss, m, log_probs, \
-            entropy, loss, preference_probs, preferences_indices, _
+            entropy, loss, preference_probs, preferences_indices, _, human_probs
         gc.collect()
 
     def store_results(self, file_name="final_results.pkl"):
