@@ -434,14 +434,24 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                         np.exp(final_rewards[id_right]) + np.exp(final_rewards[id_left]))
 
             if (answer == "right") or (answer == "r"):
+                """
+                preferences_indices += [id_right]
+                preference_probs += [prob_right]
+                """
                 preferences_indices += [id_left, id_right]
-                preference_probs += [-1, 1]
+                preference_probs += [-prob_right, prob_right]
             elif (answer == "left") or (answer == "l"):
+                """preferences_indices += [id_left]
+                preference_probs += [prob_left]
+                """
                 preferences_indices += [id_left, id_right]
-                preference_probs += [1, -1]
+                preference_probs += [prob_left, -prob_left]
             elif (answer == "both") or (answer == "b"):
+                """preferences_indices += [id_left, id_right]
+                preference_probs += [1/2, 1/2]
+                """
                 preferences_indices += [id_left, id_right]
-                preference_probs += [1, 1]
+                preference_probs += [prob_left, prob_right]
 
         return preferences_indices, preference_probs, simulated_rewards, simulated_transitions
 
@@ -532,6 +542,8 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                                                                                     preferences_indices,
                                                                                     preference_probs)
         if h_in == []:
+            self.writer.add_scalar('Losses/Loss', 0, i_epoch)
+            self.writer.add_scalar('Losses/Policy Loss', 0, i_epoch)
             del state, h_in, c_in, action, done, rewards, preference_probs, preferences_indices, human_probs, batch
             gc.collect()
             return
@@ -549,9 +561,9 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         entropy = m.entropy()
 
         # Compute loss
-        policy_loss = - torch_mul(log_probs, torch_mul(human_probs, rewards - top_epsilon_quantile)).mean()
+        #policy_loss = - torch_mul(log_probs, torch_mul(human_probs, rewards - top_epsilon_quantile)).mean()
         #policy_loss = - torch_mul(log_probs, rewards - top_epsilon_quantile).mean()
-
+        policy_loss = - torch_mul(log_probs, human_probs).mean()
         loss = policy_loss.mean() - self.entropy_coeff * entropy.mean()
 
         # perform backprop
@@ -563,6 +575,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         if self.verbose:
             self.writer.add_scalar('Losses/Loss', loss.detach().numpy(), i_epoch)
             self.writer.add_scalar('Losses/Policy Loss', policy_loss.sum().detach().numpy(), i_epoch)
+            self.writer.add_histogram("Rules_usage", action, i_epoch)
 
         del action_logits, other_predictions, state, h_in, c_in, action, done, rewards, policy_loss, m, log_probs, \
             entropy, loss, preference_probs, preferences_indices, _, human_probs

@@ -193,9 +193,9 @@ class ProbabilisticGrammar:
 if __name__ == "__main__":
     #g = ProbabilisticGrammar(grammar_file_path="../grammars/power_system_exemple.bnf")
     g = ProbabilisticGrammar(grammar_file_path="../grammars/nguyen_benchmark_v2.bnf",
-                             start_symbol="<e>",
+                             start_symbol="<f>",
                              dataset_n_vars=1)
-    print(g.productions_dict['<e>'])
+    print(g.productions_dict['<f>'])
 
     print()
     print('Terminals')

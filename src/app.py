@@ -392,9 +392,9 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
 
         grammar_content = []
         for key, prod in grammar['productions_dict'].items():
-            grammar_content += [html.I(f"{key} :== {' | '.join([pr['raw'] for pr in prod])}")] + [html.Br()]
+            grammar_content += [html.Span(f"{key} :== {' | '.join([pr['raw'] for pr in prod])}")] + [html.Br()]+ [html.Br()]
 
-        grammar_div = dbc.Alert([html.P('Grammar reminder')] + grammar_content, color="secondary")
+        grammar_div = dbc.Alert([html.P(html.Strong('Grammar reminder'))] + grammar_content, color="secondary")
 
         suggestion_box = dbc.Row(
             [dbc.Col(
@@ -758,8 +758,8 @@ def update_selected_action(selected_value, n_clicks_restart, n_clicks_suggestion
     elif "suggestion-validation" in ctx.triggered[0]['prop_id']:
 
         gc.collect()
-        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, \
-               [str(n_clicks_suggestion_validation) + str(local_expression_data)]
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, [] #\
+               #[html.Span("Validated trajectory: [" + ",".join([str(a) for a in local_expression_data['action_ids']]) + ']')]
     elif "suggestion-id" in ctx.triggered[0]['prop_id']:
         local_expression_data['comparison_with_id'] = suggestion_id
 
@@ -790,9 +790,14 @@ def update_selected_action(selected_value, n_clicks_restart, n_clicks_suggestion
                    if next_symbol in r["parent_symbol"]]
 
         expression = local_expression_data['translation']
+
         dd = dcc.Dropdown(id={'type': "select-action", 'index': current_step}, options=options),
         disabled_validation = ('<' in local_expression_data['translation']) or (suggestion_id is None)
 
+        match = re.match('(.*?)(\<.*?\>){1}(.*)', expression)
+        expression = [html.Span(match.group(1)), html.Strong(match.group(2)), html.Span(match.group(3))]
+
+        del match
         gc.collect()
         return dd, local_expression_data, expression, disabled_validation, dash.no_update
 

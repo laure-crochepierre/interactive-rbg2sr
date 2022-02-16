@@ -20,12 +20,12 @@ from abc import ABC
 
 
 class User(ABC):
-    def __init__(self, reuse=False, interaction_frequency=1):
+    def __init__(self, reuse=False, interaction_frequency=1, preferences=None):
         self.default_answer = {"pairs": {"ids": [], "answers": []},
                                "classes": {"top": [], "middle": [], 'low': []},
                                "suggest": []}
         self.description = "Default User"
-        self.preferences = None
+        self.preferences = preferences
         self.reuse = reuse
         self.dbx = None
         self.interaction_frequency = interaction_frequency
