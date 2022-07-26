@@ -74,7 +74,7 @@ app.layout = html.Div([
         dbc.Form([
             dbc.Label('Dataset', html_for="dataset-input"),
             dcc.Dropdown(options=[{"label": 'Symbolic Regression benchmark', 'value': "nguyen4"},
-                                  {"label": 'Power System Use case', 'value': "case14", "disabled": False}],
+                                  {"label": 'Power System Use case', 'value': "case14", "disabled": True}],
                          value="nguyen4",
                          id="dataset-input"),
             html.Br(),
@@ -655,7 +655,7 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
 
         right_fig = go.Figure(data=[go.Scatter(x=x, y=y_pred[id_right], name="y_pred", mode='markers'),
                                     go.Scatter(x=x, y=y, name="y", mode='markers')],
-                              layout=go.Layout(xaxis_title="Variable x",
+                              layout=go.Layout(xaxis_title=f"Variable {pairs_data['x_label']}",
                                                margin=go.layout.Margin(l=0, r=0, b=0, t=0)))
         right_fig.update_layout(legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01))
         toast_content_right = [
