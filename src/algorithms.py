@@ -163,6 +163,7 @@ class ReinforceAlgorithm(BaseAlgorithm):
 
     @torch_inference_mode()
     def sample_episodes(self, i_epoch=0):
+        print("sample")
         batch = None
         final_rewards = None
         i_batch = 0
@@ -227,19 +228,21 @@ class ReinforceAlgorithm(BaseAlgorithm):
                 i_best_reward = np.argmax(final_rewards)
                 self.logger.update({'best_expression': self.env.translations[i_best_reward],
                                     "best_reward": batch_max,
-                                    "i_best_epoch": i_epoch})
+                                    "i_best_epoch": i_epoch,
+                                    "correlation": self.env.eval_logs[i_best_reward]})
                 if self.verbose:
                     print(f'Found {self.logger["best_expression"]} at epoch {self.logger["i_best_epoch"]} '
                           f'with reward {self.logger["best_reward"]}'
-                          f'horizon {sum(self.env.done[i_best_reward])}', flush=True)
+                          f'horizon {sum(self.env.done[i_best_reward])}'
+                          f'correlation {self.logger["correlation"]}', flush=True)
 
             if self.verbose:
                 # Print batch stats
                 self.writer.add_scalar('Batch/Mean', final_rewards.mean(), i_epoch)
                 self.writer.add_scalar('Batch/Std', final_rewards.std(), i_epoch)
                 self.writer.add_scalar('Batch/Max', final_rewards.max(), i_epoch)
-                self.writer.add_scalar('Batch/Risk Eps Quantile',
-                                       np.quantile(final_rewards, 1 - self.risk_eps), i_epoch)
+                self.writer.add_scalar('Best expr/Correlation', self.logger["correlation"], i_epoch)
+                self.writer.add_scalar('Best expr/Reward', self.logger["best_reward"], i_epoch)
 
                 # Print debug elements
                 if self.debug:
