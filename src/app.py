@@ -74,7 +74,7 @@ app.layout = html.Div([
         dbc.Form([
             dbc.Label('Dataset', html_for="dataset-input"),
             dcc.Dropdown(options=[{"label": 'Symbolic Regression benchmark', 'value': "nguyen4"},
-                                  {"label": 'Power System Use case', 'value': "case14", "disabled": True}],
+                                  {"label": 'Power System Use case', 'value': "case14", "disabled": False}],
                          value="nguyen4",
                          id="dataset-input"),
             html.Br(),
@@ -113,6 +113,7 @@ app.layout = html.Div([
                           dbc.Label("Select an expression", html_for="visualize-expression-dropdown"),
                           dcc.Dropdown(clearable=False,
                                        searchable=True,
+                                       optionHeight=60,
                                        id="visualize-expression-dropdown"),
                           html.Br(),
                           dcc.Graph(id="visualize-expression-graph")
@@ -130,18 +131,20 @@ app.layout = html.Div([
                               children=
                               dbc.Row([
                                   dbc.Col(
-                                      dash_table.DataTable(
+                                    [dash_table.DataTable(
                                           columns=([{'id': 'id', 'name': 'id'},
                                                     {'id': 'Expression', 'name': 'Expression'},
-                                                    {'id': 'Reward', 'name': 'Reward'}]),
+                                                    {'id': 'Reward', 'name': 'Reward',
+                                                     "format": dash.dash_table.Format.Format(precision=10)}]),
                                           data=[],
                                           editable=False,
                                           row_selectable="multi",
                                           sort_action='native',
                                           filter_action='native',
-                                          style_cell={'whiteSpace': 'pre-line'},
-                                          id="datatable"
-                                      ), width={"size": 4}
+                                          style_table={'overflowX': 'auto'},
+                                          id="datatable",
+
+                                      )], width={"size": 4}
                                   ),
                                   dbc.Col([
                                       dbc.Row(dbc.Col(html.Div(id='all-preference-pairs')))
@@ -516,7 +519,10 @@ def expression_formating(t):
     t = t.replace('np.', '')
     for i in range(10):
         t = t.replace(f'x[:,{i}]', f"x{i}").replace(f'x[:, {i}]', f"x{i}")
-    t = parse_expr(t).__repr__().replace('/', ' / ')
+    try:
+        t = parse_expr(t).__repr__().replace('/', ' / ')
+    except:
+        t = t.replace('/', ' / ')
     return t
 
 
@@ -603,10 +609,11 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
     visu_options = [{"label": f"{t} (score {round(rewards[translations.index(t)], 3)})",
                      "value": translations.index(t)}
                     for t in top_expressions]
+    print(y.shape, y_pred.shape)
     visu_figure = go.Figure(data=[go.Scatter(x=x, y=y_pred[visu_dropdown_value],
                                              name="y_pred", mode='markers'),
                                   go.Scatter(x=x, y=y, name="y", mode='markers')],
-                            layout=go.Layout(xaxis_title="Variable x",
+                            layout=go.Layout(xaxis_title=f"Variable {pairs_data['x_label']}",
                                              title=translations[visu_dropdown_value],
                                              autosize=True,
                                              margin=go.layout.Margin(l=1, r=1, b=1, t=50)))
@@ -623,7 +630,7 @@ def pairs_plot_callback(n_intervals, gui_data_logdir, current_step, combinaisons
 
         left_fig = go.Figure(data=[go.Scatter(x=x, y=y_pred[id_left], name="y_pred", mode='markers'),
                                    go.Scatter(x=x, y=y, name="y", mode='markers')],
-                             layout=go.Layout(xaxis_title="Variable x",
+                             layout=go.Layout(xaxis_title=f"Variable {pairs_data['x_label']}",
                                               margin=go.layout.Margin(l=1, r=1, b=1, t=1)))
 
         left_fig.update_layout(legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01))
@@ -882,7 +889,7 @@ def get_classes(table_data, current_step, top_ids, middle_ids, low_ids):
         dbc.Row([
             dbc.Col([
                 dbc.Alert([
-                    html.P('Selection by filter (top solutions)'),
+                    html.P('Selection by filter'),
                     dcc.Dropdown(placeholder="Select filter type",
                                  id={'type': "top-regex-type", 'index': current_step},
                                  options=filter_options),
@@ -894,6 +901,7 @@ def get_classes(table_data, current_step, top_ids, middle_ids, low_ids):
                 ], color="secondary"),
                 dcc.Dropdown(id={'type': "top-class", 'index': current_step},
                              multi=True,
+                             optionHeight=120,
                              searchable=True,
                              clearable=False,
                              options=[{"label": f"{row['Expression']} (score {row['Reward']})",
@@ -902,7 +910,7 @@ def get_classes(table_data, current_step, top_ids, middle_ids, low_ids):
             ]),
             dbc.Col([
                 dbc.Alert([
-                    html.P('Selection by filter (middle solutions)'),
+                    html.P('Selection by filter'),
                     dcc.Dropdown(placeholder="Select filter type",
                                  id={'type': "middle-regex-type", 'index': current_step},
                                  options=filter_options),
@@ -914,6 +922,7 @@ def get_classes(table_data, current_step, top_ids, middle_ids, low_ids):
                 ], color="secondary"),
                 dcc.Dropdown(id={'type': "middle-class", 'index': current_step},
                              multi=True,
+                             optionHeight=120,
                              searchable=True,
                              clearable=False,
                              options=[{"label": f"{row['Expression']} (score {row['Reward']})",
@@ -922,7 +931,7 @@ def get_classes(table_data, current_step, top_ids, middle_ids, low_ids):
             ]),
             dbc.Col([
                 dbc.Alert([
-                    html.P('Selection by filter (low solutions)'),
+                    html.P('Selection by filter'),
                     dcc.Dropdown(placeholder="Select filter type",
                                  id={'type': "low-regex-type", 'index': current_step},
                                  options=filter_options),
@@ -934,6 +943,7 @@ def get_classes(table_data, current_step, top_ids, middle_ids, low_ids):
                 ], color="secondary"),
                 dcc.Dropdown(id={'type': "low-class", 'index': current_step},
                              multi=True,
+                             optionHeight=120,
                              searchable=True,
                              clearable=False,
                              options=[{"label": f"{row['Expression']} (score {row['Reward']})",
