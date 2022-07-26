@@ -28,6 +28,11 @@ def launch_training(writer_logdir="./test", dataset_value="nguyen4", grammar_wit
     params['env_kwargs']["grammar_file_path"] = params[dataset_value]["grammar_file_path"]
     params['env_kwargs']["train_data_path"] = params[dataset_value]["train_data_path"]
     params['env_kwargs']["test_data_path"] = params[dataset_value]["test_data_path"]
+    params['env_kwargs']["start_symbol"] = params[dataset_value]["start_symbol"]
+    params['env_kwargs']["target"] = params[dataset_value]["target"]
+    if "eval_params_path" in params[dataset_value].keys():
+        params['env_kwargs']["eval_params_path"] = os.path.join(params['folder_path'],
+                                                                params[dataset_value]["eval_params_path"])
 
     if grammar_with_without_value == "with":
         params['env_kwargs']["grammar_file_path"] = params['env_kwargs']["grammar_file_path"].replace('.bnf',
@@ -39,7 +44,11 @@ def launch_training(writer_logdir="./test", dataset_value="nguyen4", grammar_wit
                                                            params['env_kwargs']["train_data_path"])
     params['env_kwargs']["test_data_path"] = os.path.join(params['folder_path'],
                                                           params['env_kwargs']["test_data_path"])
+    params['env_kwargs']["dataset_name"] = params["dataset"]
     params['env_kwargs']["use_np"] = True
+    if dataset_value == "case14":
+        params['env_kwargs']["constant_optimizer"] = True
+        params['risk_eps'] = params[dataset_value]['risk_eps']
 
     user_kwargs = {'reuse': reuse,
                    'interaction_frequency': frequency_value}

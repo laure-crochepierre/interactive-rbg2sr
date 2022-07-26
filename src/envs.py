@@ -8,18 +8,18 @@
 import gc
 import re
 import os
-
+import json
 import dropbox
 import pandas as pd
 import numpy as np
 
-from scipy import optimize
-from numba import jit, float32
+from scipy import optimize, stats
+from numba import jit, njit, vectorize
 from io import BytesIO
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-
+from sklearn.metrics import mean_squared_error
 from sklearn.linear_model import Lasso
 
 import gym
@@ -27,11 +27,27 @@ import gym.spaces as spaces
 
 from utils.grammar_parser import ProbabilisticGrammar
 from utils.constraints import Constraints
+from utils.math_functions import *
 
 
 @jit(nopython=True)  # , float32(float32, float32)
 def base_metric(y, yhat):
     return 1 / (1 + ((y - yhat) ** 2).mean())
+
+#@jit(nopython=True)
+def pearson_cor(e1, e2):
+    r, pval = stats.pearsonr(e1, e2)
+
+    if pval >=0.05:
+        r = 0
+    return abs(r)
+
+@jit
+def mse(y, yhat):
+    return ((y - yhat) ** 2).mean()
+
+
+scaled_mean_squared_error = lambda y, yhat: 1/ (1 + mean_squared_error(y, yhat))
 
 
 class BatchSymbolicRegressionEnv(gym.Env):
@@ -40,7 +56,7 @@ class BatchSymbolicRegressionEnv(gym.Env):
                  train_data_path,
                  target,
                  test_data_path=None,
-                 eval_params={},
+                 eval_params_path=None,
                  metric=base_metric,
                  max_horizon=30,
                  min_horizon=4,
@@ -59,12 +75,13 @@ class BatchSymbolicRegressionEnv(gym.Env):
                  outlier_heuristic=False,
                  constant_optimizer=True,
                  use_np=False,
+                 dataset_name=None
                  ):
 
         # MDP related parameters
         self.max_horizon = max_horizon  # Maximal complexity of the solution
         self.min_horizon = min_horizon
-        self.eval_params = eval_params  # dictionnary containing the parameters for expression evaluation
+        self.eval_params_path = eval_params_path  # dictionnary containing the parameters for expression evaluation
         self.batch_size = batch_size
 
         self.apply_constraints = apply_constraints
@@ -77,6 +94,7 @@ class BatchSymbolicRegressionEnv(gym.Env):
         self.observe_depth = observe_depth
         self.outlier_heuristic = outlier_heuristic
 
+        self.dataset_name = dataset_name
         self.target = target  # target variable to predict
         self.use_np = use_np
         # Load datasets
@@ -133,7 +151,8 @@ class BatchSymbolicRegressionEnv(gym.Env):
         self.columns = self.X_train.columns
         y_std = self.y_train.std()
 
-        self.metric = base_metric
+        self.metric = {True: base_metric, False: scaled_mean_squared_error}[target == 'target'] #pearson_cor
+        self.eval_logs = None
 
         # Load grammar from file
         self.start_symbol = start_symbol
@@ -188,8 +207,12 @@ class BatchSymbolicRegressionEnv(gym.Env):
 
         # set a caching function
         self.cache = {}
-        for k, v in self.eval_params.items():
-            vars()[k] = v
+
+        if self.eval_params_path is not None:
+            for k, v in json.load(open(self.eval_params_path, 'rb')).items():
+                globals()[f"{k}_list"] = v
+        globals()[f"columns"] = list(self.columns)
+            #exec(f'global {k} = {v}')
 
     def reset(self):
 
@@ -206,6 +229,7 @@ class BatchSymbolicRegressionEnv(gym.Env):
 
         self.past_actions = np.full((self.batch_size, self.max_horizon, self.grammar.n_discrete_actions + 1),
                                     self.grammar.action_encoding["#"])
+        self.eval_logs = {'correlation': np.zeros((self.batch_size, 1)), 'mse': np.zeros((self.batch_size, 1))}
 
         observation = {}
         if self.observe_symbol:
@@ -349,7 +373,8 @@ class BatchSymbolicRegressionEnv(gym.Env):
                 if isinstance(x, pd.DataFrame) & self.use_np:
                     x = x.values
                 y_pred = eval(t)
-                y_pred[np.isnan(y_pred)] = 0
+                #y_pred[np.isnan(y_pred)] = 0
+
                 if isinstance(y_pred, np.float64) or isinstance(y_pred, int):
                     return reward
                 elif np.mean(np.abs(y_pred)) < 1e-10:
@@ -357,11 +382,16 @@ class BatchSymbolicRegressionEnv(gym.Env):
                 else:
                     if isinstance(y_pred, pd.Series):
                         y_pred = y_pred.values
-                    reward = self.metric(self.y_train.values, y_pred)
+
+                    y = self.y_train.values
+                    reward = self.metric(y, y_pred)
+                    self.eval_logs['correlation'][i_t] = pearson_cor(y, y_pred)
+                    self.eval_logs['mse'][i_t] = mse(y, y_pred)
 
                 if np.isnan(reward):
                     reward = 0
             except Exception as e:
+                #print(e)
                 reward = 0
         return reward
 
@@ -390,6 +420,14 @@ class BatchSymbolicRegressionEnv(gym.Env):
                                                                              self.y_train))
 
         return constants['x']
+
+    def symplify(self, t):
+        def replace_global(match):
+            res = eval(match.group(1))
+            return res
+
+        symplified_t = re.sub('x\[:,columns.index\(\ *(".*?"+.*?\[\d*%len\(.*?\)\])\ *\)\]', replace_global,t)
+        return symplified_t
 
     def get_predicted_values(self):
         predicted_data = np.empty((self.batch_size, len(self.y_test)))

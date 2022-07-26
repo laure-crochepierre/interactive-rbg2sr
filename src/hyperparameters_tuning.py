@@ -28,6 +28,9 @@ columns = ["name", "reuse", "interaction_frequency", "mse", "mae", "r2", "nrmse"
 
 def launch_training(params):
     i, reuse, interaction_frequency, user, writer_logdir = params
+    user_params = {'reuse': reuse,
+                   'interaction_frequency': interaction_frequency}
+    user = SelectByRegexUser(**user_params)
 
     print(i, writer_logdir, flush=True)
 
@@ -46,7 +49,6 @@ def launch_training(params):
 
     params["n_epochs"] = 1000
 
-    params['algo_kwargs']['risk_eps'] = 0.05
     params['algo_kwargs']['verbose'] = 0
 
     model = PreferenceReinforceGUI(env_class=BatchSymbolicRegressionEnv,
@@ -94,19 +96,16 @@ if __name__ == "__main__":
 
     combinaitions = []
     for i in range(nb_tests):
-        for reuse in [False, True]:
-            for interaction_frequency in [1, 2, 5, 10, 15, 20]:
-                user_params = {'reuse': reuse,
-                               'interaction_frequency': interaction_frequency}
-                for user in [SelectRewardWithProbUser(0.8, **user_params), SelectRewardWithProbUser(0.5, **user_params),
-                             SelectRewardWithProbUser(0.2, **user_params), SelectBestRewardUser(**user_params),
-                             SelectByRegexUser(**user_params), SelectByRegexUser("^[^lse]+$", **user_params)]:
-                    logdir = f"../results/benchmark_user_behavior_no_reuse/reuse_{reuse}_{user.type}_freq_{interaction_frequency}_{i}"
-                    combinaitions.append([i, reuse, interaction_frequency, user, logdir])
+        for entropy_coeff in [0.001, 0.005, 0.0001, 0.0005]:
+            for learning_rate in [0.1, 0.01, 0.001, 0.0001]:
+
+                for risk_eps in [0.1, 0.01, 0.5]:
+                    logdir = f"../results/hyperparameter_tuning_minmax_loss/entropy_{entropy_coeff}_lr_{learning_rate}_risk_eps_{risk_eps}_{i}"
+                    combinaitions.append([i, entropy_coeff, learning_rate, risk_eps, logdir])
     print("Nb combinaisons", len(combinaitions), flush=True)
-    
-    with Pool(10) as p:
+
+    with Pool(6) as p:
             scores = p.map(launch_training, combinaitions)
 
     pd.DataFrame(data=scores,
-                 columns=columns).to_csv(f"../results/benchmark_user_behavior_no_reuse_{time.time()}.csv")
+                 columns=columns).to_csv(f"../results/parameter_tuning_minmax_loss{time.time()}.csv")

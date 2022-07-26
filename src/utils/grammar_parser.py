@@ -96,13 +96,13 @@ class ProbabilisticGrammar:
             raise ValueError('Invalid file format')
 
         encoders = {"symbols": OneHotEncoder(sparse=False, handle_unknown="ignore").fit([[s] for s in self.symbols + ['#']]),
-                    "actions": OneHotEncoder(sparse=False, handle_unknown="ignore").fit([[p['raw']] for p in
+                    "actions": OneHotEncoder(sparse=False, handle_unknown="ignore").fit([[f"{p['parent_symbol']}@{p['raw']}"] for p in
                                                                                          self.productions_list] + [["#"]])
                     }
         self.all_symbols = self.symbols + ["#"]
         self.all_actions = [p['raw'] for p in self.productions_list] + ['#']
         self.symbol_encoding = {s : encoders["symbols"].transform([[s]]) for s in self.all_symbols}
-        self.action_encoding = {p : encoders["actions"].transform([[p]]) for p in self.all_actions}
+        self.action_encoding = {p.split('@')[0]: encoders["actions"].transform([[p]]) for p in self.all_actions}
 
     def parse(self, f, symbol_sep=SYMBOL_SEP, rule_sep=RULE_SEP):
         symbols = []
@@ -192,10 +192,13 @@ class ProbabilisticGrammar:
 
 if __name__ == "__main__":
     #g = ProbabilisticGrammar(grammar_file_path="../grammars/power_system_exemple.bnf")
-    g = ProbabilisticGrammar(grammar_file_path="../grammars/nguyen_benchmark_v2.bnf",
-                             start_symbol="<e>",
+    g = ProbabilisticGrammar(grammar_file_path="../grammars/case_14.bnf",
+                             start_symbol="<expr>",
                              dataset_n_vars=1)
-    print(g.productions_dict['<e>'])
+    for key, value in g.productions_dict.items():
+        print(key, [v['raw'] for v in value])
+    print(len(g.productions_list))
+
 
     print()
     print('Terminals')

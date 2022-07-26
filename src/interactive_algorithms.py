@@ -298,11 +298,14 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                 i_best_reward = np.argmax(final_rewards)
                 self.logger.update({'best_expression': self.env.translations[i_best_reward],
                                     "best_reward": batch_max,
-                                    "i_best_epoch": i_epoch})
+                                    "i_best_epoch": i_epoch,
+                                    "correlation": self.env.eval_logs['correlation'][i_best_reward],
+                                    "mse": self.env.eval_logs['mse'][i_best_reward]})
                 if self.verbose:
                     print(f'Found {self.logger["best_expression"]} at epoch {self.logger["i_best_epoch"]} '
                           f'with reward {self.logger["best_reward"]}'
-                          f'horizon {sum(self.env.done[i_best_reward])}', flush=True)
+                          f'horizon {sum(self.env.done[i_best_reward])}'
+                          f'correlation {self.logger["correlation"]}', flush=True)
 
             if self.verbose:
                 # Print batch stats
@@ -311,6 +314,10 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                 self.writer.add_scalar('Batch/Max', final_rewards.max(), i_epoch)
                 self.writer.add_scalar('Batch/Risk Eps Quantile',
                                        np.quantile(final_rewards, 1 - self.risk_eps), i_epoch)
+
+                self.writer.add_scalar('Best expr/Correlation', self.logger["correlation"], i_epoch)
+                self.writer.add_scalar('Best expr/MSE', self.logger["mse"], i_epoch)
+                self.writer.add_scalar('Best expr/Reward', self.logger["best_reward"], i_epoch)
 
                 # Print debug elements
                 if self.debug:
@@ -353,6 +360,7 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         gc.collect()
 
     def ask_for_preferences(self, top_epsilon_quantile, final_rewards, i_epoch):
+        print("ask for preferences")
         # unique_indexes = np.array([self.env.translations.index(x) for x in set(self.env.translations)])
         top_indices = np.argwhere(final_rewards >= top_epsilon_quantile)[:, 0]
         # indices_to_compare = np.intersect1d(top_indices, unique_indexes)
@@ -362,14 +370,15 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
             print(e)
 
         gui_infos = None
-        if isinstance(self.user, RealUser):
 
+        if isinstance(self.user, RealUser):
             # save current population to file
             gui_infos = {"combinaisons": combinaisons_to_compare,
-                         "translations": self.env.translations,
-                         "x": self.env.X_test[self.x_label],
-                         "predicted_values": self.env.get_predicted_values(),
-                         "target_values": self.env.y_test,
+                         "translations": [self.env.symplify(t) for t in self.env.translations],
+                         "x_label": {True: 'x0', False: self.x_label}[self.x_label == "x"],
+                         "x": self.env.X_test[self.x_label][:1000],
+                         "predicted_values": self.env.get_predicted_values()[:, :1000],
+                         "target_values": self.env.y_test[:1000],
                          "top_indices": top_indices,
                          "rewards": final_rewards,
                          'grammar': {'productions_list': self.env.grammar.productions_list,
@@ -434,14 +443,24 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
                         np.exp(final_rewards[id_right]) + np.exp(final_rewards[id_left]))
 
             if (answer == "right") or (answer == "r"):
+                """
+                preferences_indices += [id_right]
+                preference_probs += [prob_right]
+                """
                 preferences_indices += [id_left, id_right]
-                preference_probs += [-1, 1]
+                preference_probs += [-prob_right, prob_right]
             elif (answer == "left") or (answer == "l"):
+                """preferences_indices += [id_left]
+                preference_probs += [prob_left]
+                """
                 preferences_indices += [id_left, id_right]
-                preference_probs += [1, -1]
+                preference_probs += [prob_left, -prob_left]
             elif (answer == "both") or (answer == "b"):
+                """preferences_indices += [id_left, id_right]
+                preference_probs += [1/2, 1/2]
+                """
                 preferences_indices += [id_left, id_right]
-                preference_probs += [1, 1]
+                preference_probs += [prob_left, prob_right]
 
         return preferences_indices, preference_probs, simulated_rewards, simulated_transitions
 
@@ -531,7 +550,10 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         state, h_in, c_in, action, done, rewards, human_probs = filter_combinaisons(batch,
                                                                                     preferences_indices,
                                                                                     preference_probs)
+        print(len(h_in))
         if h_in == []:
+            self.writer.add_scalar('Losses/Loss', 0, i_epoch)
+            self.writer.add_scalar('Losses/Policy Loss', 0, i_epoch)
             del state, h_in, c_in, action, done, rewards, preference_probs, preferences_indices, human_probs, batch
             gc.collect()
             return
@@ -549,9 +571,9 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         entropy = m.entropy()
 
         # Compute loss
-        policy_loss = - torch_mul(log_probs, torch_mul(human_probs, rewards - top_epsilon_quantile)).mean()
+        #policy_loss = - torch_mul(log_probs, torch_mul(human_probs, rewards - top_epsilon_quantile)).mean()
         #policy_loss = - torch_mul(log_probs, rewards - top_epsilon_quantile).mean()
-
+        policy_loss = - torch_mul(log_probs, human_probs).mean()
         loss = policy_loss.mean() - self.entropy_coeff * entropy.mean()
 
         # perform backprop
@@ -561,8 +583,9 @@ class PreferenceReinforceGUI(ReinforceAlgorithm):
         self.optimizer.step()
 
         if self.verbose:
-            self.writer.add_scalar('Losses/Loss', loss.detach().numpy(), i_epoch)
-            self.writer.add_scalar('Losses/Policy Loss', policy_loss.sum().detach().numpy(), i_epoch)
+            self.writer.add_scalar('Interactive Losses/Loss', loss.detach().numpy(), i_epoch)
+            self.writer.add_scalar('Interactive Losses/Policy Loss', policy_loss.sum().detach().numpy(), i_epoch)
+            self.writer.add_histogram("Rules_usage", action, i_epoch)
 
         del action_logits, other_predictions, state, h_in, c_in, action, done, rewards, policy_loss, m, log_probs, \
             entropy, loss, preference_probs, preferences_indices, _, human_probs
