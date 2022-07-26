@@ -474,9 +474,10 @@ def content_callback(launch_n_clicks, n_intervals, validate_n_clicks, delete_pai
 
     elif pid is None:
         hidden_before = False
-        modal_header = "Training has crashed"
-        modal_content = "We are using a free Heroku account with limited options. " \
-                        "The server is rebooting, you need to start a new training"
+        modal_header = "Training is restarting"
+        modal_content = "We are using a free Heroku account for this demo with limited options, " \
+                        "so the website can only handle one user at the time. " \
+                        "The server is rebooting and you need to start a new training. "
         show_modal = True
         return interval_disabled, hidden_during, hidden_before, hidden_waiter, hidden_iteration_data, logdir, pid, \
                pair_indexes, current_step, grammar, table_data, children, suggestion_box, pref_classes, \
