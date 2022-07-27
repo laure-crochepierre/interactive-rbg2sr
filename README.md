@@ -114,5 +114,5 @@ All source code is made available under a MPL-2.0 license.
     }
 
 ## Contact 
-*laure.crochepierre@rte-france.com* , 
-*laure.crochepierre@univ-lorraine.fr*
+*laure.crochepierre AT rte-france.com* , 
+*laure.crochepierre AT univ-lorraine.fr*
